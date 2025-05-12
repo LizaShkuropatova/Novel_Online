@@ -62,6 +62,8 @@ class Character(BaseModel):
     backstory:    str                                    # пред-история
     traits:       str                                    # Дополнительные черты, привычки или предпочтения персонажа в виде одной строки
 
+Status = Literal["playing", "planned", "completed", "favorite", "abandoned"]
+
 class User(BaseModel):
     user_id:          str = Field(default_factory=gen_uuid)
     email:            EmailStr
@@ -71,10 +73,13 @@ class User(BaseModel):
     avatar:           Optional[str]      = None
     created_at:     datetime           = Field(default_factory=now_utc)
     last_login:     datetime           = Field(default_factory=now_utc)
-    friends:          List[str]          = Field(default_factory=list)  # [user_id]
-    created_novels:   List[str]          = Field(default_factory=list)  # [novel_id]
-    saved_novels:     List[str]          = Field(default_factory=list)  # [novel_id]
-    completed_novels: List[str]          = Field(default_factory=list)  # [novel_id]
+    friends:          List[str]          = Field(default_factory=list)  # Список друзей [user_id]
+    created_novels:   List[str]          = Field(default_factory=list)  # Созданные пользователем новеллы
+    playing_novels: List[str] = Field(default_factory=list) # Играю
+    planned_novels:     List[str]          = Field(default_factory=list)  # В планах
+    completed_novels: List[str]          = Field(default_factory=list)  # Пройдено
+    favorite_novels: List[str] = Field(default_factory=list) # Любимые
+    abandoned_novels: List[str] = Field(default_factory=list) # Брошено
 
 class Multiplayer(BaseModel):
     session_id:    str                 = Field(default_factory=gen_uuid)

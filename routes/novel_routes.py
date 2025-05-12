@@ -4,7 +4,7 @@ from pydantic import BaseModel
 from datetime import datetime, timezone
 import uuid
 
-from models import Novel, Character, User, TextSegment,TextEdit, Genre
+from models import Novel, Character, User, TextSegment,TextEdit, Genre, Status
 from utils.firebase import get_db, get_storage_bucket
 from google.cloud.firestore import Client as FirestoreClient
 from routes.auth_routes import get_current_user
@@ -478,3 +478,61 @@ async def upload_novel_image(
     })
 
     return {"url": url}
+
+
+@router.put(
+    "/me/novels/{novel_id}/status",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Установить статус новеллы для текущего пользователя"
+)
+async def set_novel_status(
+    novel_id: str,
+    new_status: Status = Query(..., description="Выберите статус"),
+    db: FirestoreClient = Depends(get_db),
+    current: User       = Depends(get_current_user),
+):
+    """
+    Снимает эту новеллу из всех пяти списков и добавляет в тот, который указан в new_status.
+    """
+    user_ref = db.collection("users").document(current.user_id)
+
+    # сначала удаляем из всех списков
+    updates = {}
+    for field in ("playing_novels", "planned_novels", "completed_novels", "favorite_novels", "abandoned_novels"):
+        updates[field] = firestore.ArrayRemove([novel_id])
+
+    # потом добавляем в нужный
+    field_to_add = f"{new_status}_novels"
+    updates[field_to_add] = firestore.ArrayUnion([novel_id])
+
+    # применяем всё одним вызовом update
+    user_ref.update(updates)
+
+
+@router.get(
+    "/me/novels/{novel_id}/status",
+    summary="Узнать, в каком списке находится новелла у текущего пользователя",
+    response_model=Literal["playing", "planned", "completed", "favorite", "abandoned", None]
+)
+async def get_novel_status(
+    novel_id: str,
+    db: FirestoreClient     = Depends(get_db),
+    current: User           = Depends(get_current_user),
+):
+    user_doc = db.collection("users").document(current.user_id).get()
+    if not user_doc.exists:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Пользователь не найден")
+    data = user_doc.to_dict()
+
+    # проверяем каждый список по порядку
+    if novel_id in data.get("playing_novels", []):
+        return "playing"
+    if novel_id in data.get("planned_novels", []):
+        return "planned"
+    if novel_id in data.get("completed_novels", []):
+        return "completed"
+    if novel_id in data.get("favorite_novels", []):
+        return "favorite"
+    if novel_id in data.get("abandoned_novels", []):
+        return "abandoned"
+    return None

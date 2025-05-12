@@ -2,14 +2,14 @@ import os
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Tuple, Union
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, File, UploadFile
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, EmailStr, Field
 from passlib.context import CryptContext
 from jose import jwt
 from jose.exceptions import JWTError
 
-from utils.firebase import get_db
+from utils.firebase import get_db, get_storage_bucket
 from google.cloud.firestore import Client as FirestoreClient, FieldFilter
 from models import User, gen_uuid, now_utc
 
@@ -147,3 +147,33 @@ async def get_current_user(
 @router.get("/me", response_model=Me)
 async def me(current: User = Depends(get_current_user)):
     return Me(**current.model_dump())
+
+# ─── Upload Avatar
+@router.post(
+    "/me/avatar",
+    status_code=status.HTTP_200_OK,
+    summary="Upload avatar for current user"
+)
+async def upload_user_avatar(
+    file: UploadFile = File(...),
+    db: FirestoreClient = Depends(get_db),
+    current_user: User  = Depends(get_current_user),
+):
+    # Проверяем, что документ пользователя существует
+    user_ref = db.collection("users").document(current_user.user_id)
+    if not user_ref.get().exists:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
+
+    # Заливаем файл в Cloud Storage
+    bucket = get_storage_bucket()  # используется default bucket из init_firebase()
+    blob = bucket.blob(f"users/{current_user.user_id}/{file.filename}")
+    contents = await file.read()
+    blob.upload_from_string(contents, content_type=file.content_type)
+
+    # Получаем публичный URL
+    url = blob.public_url
+
+    # Сохраняем URL в поле avatar документа пользователя
+    user_ref.update({"avatar": url})
+
+    return {"avatar_url": url}
