@@ -50,6 +50,11 @@ class Me(BaseModel):
     created_at: datetime
     last_login: datetime
 
+class UserPatch(BaseModel):
+    username: Optional[str]               = None
+    password: Optional[str] = Field(None, min_length=6)
+    birthday: Optional[datetime]          = None
+
 
 # ─── Utility functions ─────────────────────────────────────────────────────────
 def hash_password(pw: str) -> str:
@@ -212,3 +217,38 @@ async def upload_user_avatar(
     })
 
     return {"avatar_url": new_url}
+
+@router.patch(
+    "/me",
+    response_model=Me,
+    summary="Partially update current user's profile",
+    status_code=status.HTTP_200_OK,
+)
+async def update_me(
+    payload: UserPatch,
+    db:      FirestoreClient = Depends(get_db),
+    current: User            = Depends(get_current_user),
+):
+    # Собираем только те поля, что пришли
+    update_data = payload.model_dump(exclude_unset=True)
+    if not update_data:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Нет полей для обновления")
+
+    # Проверяем уникальность username
+    if "username" in update_data and update_data["username"] != current.username:
+        existing_id, _ = get_user_by_username(db, update_data["username"])
+        if existing_id:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Username already taken")
+
+    # Хэшируем новый пароль
+    if "password" in update_data:
+        update_data["password"] = hash_password(update_data["password"])
+
+    # Обновляем документ пользователя
+    user_ref = db.collection("users").document(current.user_id)
+    user_ref.update(update_data)
+
+    # Читаем обратно и возвращаем
+    new_doc = user_ref.get().to_dict()
+    new_doc["user_id"]   = current.user_id
+    return Me(**new_doc)

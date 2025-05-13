@@ -44,7 +44,6 @@ async def create_novel(
         user_players = [current_user.user_id],
         created_at   = now,
         updated_at   = now,
-        # из формы:
         genres       = data.genres,
         title        = data.title or "",
         description  = data.description or "",
