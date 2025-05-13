@@ -159,21 +159,34 @@ async def upload_user_avatar(
     db: FirestoreClient = Depends(get_db),
     current_user: User  = Depends(get_current_user),
 ):
-    # Проверяем, что документ пользователя существует
     user_ref = db.collection("users").document(current_user.user_id)
-    if not user_ref.get().exists:
+    snap = user_ref.get()
+    if not snap.exists:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
 
-    # Заливаем файл в Cloud Storage
-    bucket = get_storage_bucket()  # используется default bucket из init_firebase()
-    blob = bucket.blob(f"users/{current_user.user_id}/{file.filename}")
+    # Получаем ссылку на старый аватар (если была)
+    data = snap.to_dict()
+    old_avatar_url = data.get("avatar")
+
+    bucket = get_storage_bucket()
+
+    # Удаляем старый файл из Storage (все файлы в папке users/{user_id}/)
+    prefix = f"users/{current_user.user_id}/"
+    blobs = bucket.list_blobs(prefix=prefix)
+    for b in blobs:
+        # если нужно точнее, можно сравнить b.public_url с old_avatar_url
+        b.delete()
+
+    # Загружаем новый файл
+    blob = bucket.blob(f"{prefix}{file.filename}")
     contents = await file.read()
     blob.upload_from_string(contents, content_type=file.content_type)
 
-    # Получаем публичный URL
-    url = blob.public_url
+    # Делаем его публичным (необязательно?)
+    blob.make_public()
+    new_url = blob.public_url
 
-    # Сохраняем URL в поле avatar документа пользователя
-    user_ref.update({"avatar": url})
+    # Обновляем поле avatar в Firestore
+    user_ref.update({"avatar": new_url, "last_login": datetime.utcnow()})
 
-    return {"avatar_url": url}
+    return {"avatar_url": new_url}

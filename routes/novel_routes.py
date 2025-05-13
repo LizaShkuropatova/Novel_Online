@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Depends, status, Query, File, UploadFile
-from typing import List, Literal
+from typing import List, Literal, Optional
 from pydantic import BaseModel
 from datetime import datetime, timezone
 import uuid
@@ -102,29 +102,92 @@ async def update_novel(
     novel_id: str,
     payload:  Novel,
     db:        FirestoreClient = Depends(get_db),
+    current_user: User          = Depends(get_current_user),
 ):
     ref = db.collection("novels").document(novel_id)
-    if not ref.get().exists:
+    snap = ref.get()
+    if not snap.exists:
         raise HTTPException(status_code=404, detail="Новелла не найдена")
+
+    # проверяем, что текущий юзер — один из авторов
+    novel = Novel.model_validate(snap.to_dict())
+    if current_user.user_id not in novel.users_author:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Обновлять может только автор новеллы"
+        )
 
     payload.updated_at = datetime.now(timezone.utc)
     ref.set(payload.model_dump(), merge=True)
     return payload
+
+class NovelPatch(BaseModel):
+    title:        Optional[str]       = None
+    description:  Optional[str]       = None
+    genres:       Optional[List[Genre]] = None
+    setting:      Optional[str]       = None
+    is_public:    Optional[bool]      = None
+
+@router.patch(
+    "/{novel_id}",
+    response_model=Novel,
+    summary="Partially update a novel (title, description, genres, setting, is_public",
+    status_code=status.HTTP_200_OK,
+)
+async def patch_novel(
+    novel_id: str,
+    payload:  NovelPatch,
+    db:        FirestoreClient = Depends(get_db),
+    current_user: User        = Depends(get_current_user),
+):
+    ref = db.collection("novels").document(novel_id)
+    snap = ref.get()
+    if not snap.exists:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Новелла не найдена")
+
+    stored = Novel.model_validate(snap.to_dict())
+    if current_user.user_id not in stored.users_author:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Обновлять может только автор")
+
+    # Собираем только те поля, которые пришли
+    update_data = payload.model_dump(exclude_unset=True)
+    if not update_data:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Нет полей для обновления")
+
+    # Добавляем метку времени
+    update_data["updated_at"] = datetime.now(timezone.utc)
+
+    # Пушим в Firestore
+    ref.update(update_data)
+
+    # Возвращаем свежие данные
+    new_snap = ref.get()
+    return Novel.model_validate(new_snap.to_dict())
 
 
 @router.delete("/{novel_id}")
 async def delete_novel(
     novel_id: str,
     db:        FirestoreClient = Depends(get_db),
+    current_user: User          = Depends(get_current_user),
 ):
     """
     Удаляет новеллу, очищает все её вхождения в профилях пользователей
     и удаляет связанные сессии.
     """
-    # 1) Проверяем, что новелла есть
+    # Проверяем, что новелла есть
     ref = db.collection("novels").document(novel_id)
+    snap = ref.get()
     if not ref.get().exists:
         raise HTTPException(status_code=404, detail="Новелла не найдена")
+
+    # проверяем, что текущий юзер — один из авторов
+    novel = Novel.model_validate(snap.to_dict())
+    if current_user.user_id not in novel.users_author:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Удалить может только автор новеллы"
+        )
 
     # Удаляем сам документ новеллы
     ref.delete()

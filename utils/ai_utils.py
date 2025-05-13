@@ -8,7 +8,7 @@ client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 # Общая обёртка под любой чат-запрос
 def chat_with_model(
-    messages: list[dict],
+    messages: List[dict],
     model: str = os.getenv("AI_MODEL", "gpt-3.5-turbo"),
     max_tokens: int = 200,
     temperature: float = 0.8,
