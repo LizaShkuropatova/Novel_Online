@@ -458,6 +458,28 @@ async def edit_segment(
     out = TextSegment(segment_id=segment_id, **updated)
     return out
 
+# Получить все сегменты новеллы по айди новеллы
+@router.get(
+    "/{novel_id}/text/segments",
+    response_model=List[TextSegment],
+    summary="List all text segments for a novel",
+)
+async def list_text_segments(
+    novel_id: str,
+    db: FirestoreClient = Depends(get_db),
+):
+    novel_ref = db.collection("novels").document(novel_id)
+    if not novel_ref.get().exists:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Novel not found")
+
+    snaps = (
+        novel_ref
+        .collection("text_segments")
+        .order_by("created_at")
+        .stream()
+    )
+    return [TextSegment.model_validate(doc.to_dict()) for doc in snaps]
+
 
 # Список новелл, созданных пользователем (не учитывает те где участвывает)
 @router.get("/user/{user_id}",response_model=List[Novel],summary="Список новелл, созданных пользователем")
