@@ -24,6 +24,13 @@ class CharacterPayload(BaseModel):
 class CharacterIdResponse(BaseModel):
     character_id: str
 
+@router.get("/genres",response_model=List[Genre],summary="List all available genres")
+async def list_genres():
+    """
+    Returns a list of all genres supported by the application.
+    """
+    return list(Genre)
+
 @router.post("/", response_model=Novel, status_code=status.HTTP_201_CREATED)
 async def create_novel(
     novel: Novel,
