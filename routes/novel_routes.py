@@ -537,7 +537,7 @@ async def upload_novel_image(
     blob = bucket.blob(f"novels/{novel_id}/{file.filename}")
     contents = await file.read()
     blob.upload_from_string(contents, content_type=file.content_type)
-
+    blob.make_public()
     # Получаем публичный URL
     url = blob.public_url
 
