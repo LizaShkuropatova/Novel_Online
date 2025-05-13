@@ -508,39 +508,36 @@ async def list_author_and_player_novels(
 @router.post(
     "/{novel_id}/images",
     status_code=status.HTTP_201_CREATED,
-    summary="Upload an image for a novel",
+    summary="Upload a cover image for a novel",
 )
 async def upload_novel_image(
     novel_id: str,
     file: UploadFile = File(...),
-    db = Depends(get_db),
-    current_user: User  = Depends(get_current_user),
+    db=Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     # Проверяем, что новелла существует и текущий пользователь — её автор
     ref = db.collection("novels").document(novel_id)
     snap = ref.get()
     if not snap.exists:
-        raise HTTPException(404, "Novel not found")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Novel not found")
     novel = Novel.model_validate(snap.to_dict())
     if current_user.user_id not in novel.users_author:
-        raise HTTPException(403, "Only an author can upload images")
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only an author can upload images")
 
     # Заливаем файл в Cloud Storage
-    bucket = get_storage_bucket()  # после init_firebase() с storageBucket
+    bucket = get_storage_bucket()
     blob = bucket.blob(f"novels/{novel_id}/{file.filename}")
-
     contents = await file.read()
-
     blob.upload_from_string(contents, content_type=file.content_type)
 
+    # Получаем публичный URL
     url = blob.public_url
 
-    # Сохраняем URL-ку в Firestore
-    ref.update({
-        "image_urls": firestore.ArrayUnion([url])
-    })
+    # Сохраняем строку URL в поле cover_image_url
+    ref.update({"cover_image_url": url})
 
-    return {"url": url}
+    return {"cover_image_url": url}
 
 
 @router.put(

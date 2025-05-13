@@ -1,4 +1,5 @@
 import os
+from urllib.parse import urlparse
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Tuple, Union
 
@@ -16,7 +17,7 @@ from models import User, gen_uuid, now_utc
 # ─── JWT settings ───────────────────────────────────────────────────────────────
 SECRET_KEY       = os.getenv("SECRET_KEY", "changeme")
 ALGORITHM        = os.getenv("ALGORITHM", "HS256")
-ACCESS_TOKEN_MIN = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "60"))
+ACCESS_TOKEN_MIN = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "260"))
 
 pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
 router  = APIRouter()
@@ -82,6 +83,20 @@ def get_user_by_email(
         return doc.id, data
     return None, None
 
+def get_user_by_username(
+    db: FirestoreClient,
+    username: str
+) -> Tuple[Optional[str], Optional[dict]]:
+    snaps = (
+        db.collection("users")
+          .where(filter=FieldFilter("username", "==", username))
+          .stream()
+    )
+    for doc in snaps:
+        data = doc.to_dict()
+        data["user_id"] = doc.id
+        return doc.id, data
+    return None, None
 
 # ─── POST /auth/register ───────────────────────────────────────────────────────
 @router.post("/register", response_model=Me, status_code=status.HTTP_201_CREATED)
@@ -89,24 +104,32 @@ async def register(
     payload: UserCreate,
     db:      FirestoreClient = Depends(get_db),
 ):
+    # уникальность email
     existing_id, _ = get_user_by_email(db, payload.email)
     if existing_id:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Email already registered")
+    # уникальность username
+    existing_id, _ = get_user_by_username(db, payload.username)
+    if existing_id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Username already taken")
 
     now = now_utc()
     user = User(
-        user_id          = gen_uuid(),
-        email            = payload.email,
-        password         = hash_password(payload.password),
-        username         = payload.username,
-        birthday         = payload.birthday,
-        avatar           = payload.avatar,
-        created_at       = now,
-        last_login       = now,
-        friends          = [],
-        created_novels   = [],
-        saved_novels     = [],
-        completed_novels = [],
+        user_id           = gen_uuid(),
+        email             = payload.email,
+        password          = hash_password(payload.password),
+        username          = payload.username,
+        birthday          = payload.birthday,
+        avatar            = payload.avatar,
+        created_at        = now,
+        last_login        = now,
+        friends           = [],
+        created_novels    = [],
+        playing_novels    = [],
+        planned_novels    = [],
+        completed_novels  = [],
+        favorite_novels   = [],
+        abandoned_novels  = [],
     )
     db.collection("users").document(user.user_id).set(user.model_dump())
     return Me(**user.model_dump())
@@ -149,44 +172,43 @@ async def me(current: User = Depends(get_current_user)):
     return Me(**current.model_dump())
 
 # ─── Upload Avatar
-@router.post(
-    "/me/avatar",
-    status_code=status.HTTP_200_OK,
-    summary="Upload avatar for current user"
-)
+@router.post("/me/avatar",status_code=status.HTTP_200_OK, summary="Upload avatar for current user")
 async def upload_user_avatar(
     file: UploadFile = File(...),
-    db: FirestoreClient = Depends(get_db),
-    current_user: User  = Depends(get_current_user),
+    db: FirestoreClient  = Depends(get_db),
+    current_user: User   = Depends(get_current_user),
 ):
     user_ref = db.collection("users").document(current_user.user_id)
     snap = user_ref.get()
     if not snap.exists:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
 
-    # Получаем ссылку на старый аватар (если была)
     data = snap.to_dict()
     old_avatar_url = data.get("avatar")
 
     bucket = get_storage_bucket()
 
-    # Удаляем старый файл из Storage (все файлы в папке users/{user_id}/)
-    prefix = f"users/{current_user.user_id}/"
-    blobs = bucket.list_blobs(prefix=prefix)
-    for b in blobs:
-        # если нужно точнее, можно сравнить b.public_url с old_avatar_url
-        b.delete()
+    # если был старый аватар — удаляем его
+    if old_avatar_url:
+        # URL имеет вид https://storage.googleapis.com/<bucket-name>/users/{user_id}/{filename}
+        # берем путь "users/{user_id}/{filename}"
+        parsed = urlparse(old_avatar_url)
+        # parsed.path = "/<bucket-name>/users/{user_id}/{filename}"
+        # убираем первый сегмент "/<bucket-name>/"
+        blob_path = parsed.path.lstrip("/").split("/", 1)[1]
+        bucket.blob(blob_path).delete()
 
-    # Загружаем новый файл
-    blob = bucket.blob(f"{prefix}{file.filename}")
+    # загружаем новый файл
+    blob = bucket.blob(f"users/{current_user.user_id}/{file.filename}")
     contents = await file.read()
     blob.upload_from_string(contents, content_type=file.content_type)
-
-    # Делаем его публичным (необязательно?)
     blob.make_public()
     new_url = blob.public_url
 
-    # Обновляем поле avatar в Firestore
-    user_ref.update({"avatar": new_url, "last_login": datetime.utcnow()})
+    # сохраняем новый URL в Firestore
+    user_ref.update({
+        "avatar": new_url,
+        "last_login": datetime.now(timezone.utc)
+    })
 
     return {"avatar_url": new_url}
