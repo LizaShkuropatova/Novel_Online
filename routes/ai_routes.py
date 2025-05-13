@@ -17,8 +17,7 @@ from utils.ai_utils import (
 from utils.firebase import get_db
 from google.cloud.firestore import Client as FirestoreClient
 from routes.auth_routes import get_current_user
-from models import Character, Novel, User, TextSegment, Choice, now_utc
-from models_multiplayer import MultiplayerSession
+from models import Character, Novel, User, TextSegment, Choice, now_utc, MultiplayerSession
 
 router = APIRouter()
 
