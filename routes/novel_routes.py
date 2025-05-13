@@ -4,7 +4,7 @@ from pydantic import BaseModel
 from datetime import datetime, timezone
 import uuid
 
-from models import Novel, Character, User, TextSegment,TextEdit, Genre, Status
+from models import NovelCreate, Novel, Character, User, TextSegment,TextEdit, Genre, Status
 from utils.firebase import get_db, get_storage_bucket
 from google.cloud.firestore import Client as FirestoreClient
 from routes.auth_routes import get_current_user
@@ -33,28 +33,29 @@ async def list_genres():
 
 @router.post("/", response_model=Novel, status_code=status.HTTP_201_CREATED)
 async def create_novel(
-    novel: Novel,
+    data: NovelCreate,
     current_user: User           = Depends(get_current_user),
     db:           FirestoreClient = Depends(get_db),
 ):
-    """
-    Создаёт новую новеллу и сразу ставит текущего пользователя
-    её автором и первым игроком.
-    """
-    # Уникальный ID и метки времени
-    novel.novel_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc)
-    novel.created_at = now
-    novel.updated_at = now
+    novel = Novel(
+        novel_id     = str(uuid.uuid4()),
+        users_author = [current_user.user_id],
+        user_players = [current_user.user_id],
+        created_at   = now,
+        updated_at   = now,
+        # из формы:
+        genres       = data.genres,
+        title        = data.title or "",
+        description  = data.description or "",
+        setting      = data.setting or "",
+        is_public    = data.is_public,
+    )
 
-    # Привязываем текущего пользователя
-    novel.users_author = [current_user.user_id]
-    novel.user_players = [current_user.user_id]
-
-    # Сохранение
+    # сохраняем
     db.collection("novels").document(novel.novel_id).set(novel.model_dump())
 
-    # Обновляем массив created_novels у пользователя
+    # добавляем в created_novels автора
     db.collection("users").document(current_user.user_id).update({
         "created_novels": firestore.ArrayUnion([novel.novel_id])
     })

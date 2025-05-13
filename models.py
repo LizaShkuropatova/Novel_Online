@@ -32,6 +32,13 @@ class Genre(str, Enum):
     young_adult = "young_adult"
     biography = "biography"
 
+class NovelCreate(BaseModel):
+    genres:      List[Genre]
+    title:       Optional[str] = None
+    description: Optional[str] = None
+    setting:     Optional[str] = None
+    is_public:   Optional[bool]  = False
+
 class Novel(BaseModel):
     # ——— Метаданные Новеллы ———
     novel_id:          str = Field(default_factory=gen_uuid)
