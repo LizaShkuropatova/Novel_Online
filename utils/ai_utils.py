@@ -37,7 +37,8 @@ def generate_title(
     """
     system_msg = (
         "You are a creative assistant specialized in generating evocative novel titles. "
-        "Given the genre (and optionally description/setting), produce a concise title."
+        "Given the genre (and optionally description, setting), produce a concise title."
+        "Do NOT include quotation marks or / in the output."
     )
     genre_str = ", ".join(genres)
     user_msg = f"Genres: {genre_str}\n"
