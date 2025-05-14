@@ -4,7 +4,7 @@ from pydantic import BaseModel
 from datetime import datetime, timezone
 import uuid
 
-from models import NovelCreate, Novel, Character, User, TextSegment,TextEdit, Genre, Status
+from models import NovelCreate, Novel, Character, User, TextSegment,TextEdit, Genre, Status, StatusFilter
 from utils.firebase import get_db, get_storage_bucket
 from google.cloud.firestore import Client as FirestoreClient
 from routes.auth_routes import get_current_user
@@ -625,3 +625,67 @@ async def get_novel_status(
     if novel_id in data.get("abandoned_novels", []):
         return "abandoned"
     return None
+
+
+@router.get(
+    "/me/novels",
+    response_model=List[Novel],
+    summary="List my novels, with optional role/status and genre filters"
+)
+async def list_my_novels(
+    user_status: StatusFilter = Query("all", description="all | created | playing | planned | completed | favorite | abandoned"),
+    genre: Optional[Genre] = Query(None, description="Optional genre filter"),
+    db: FirestoreClient = Depends(get_db),
+    me: User = Depends(get_current_user),
+):
+    """
+    - status=all           → union(created_novels, playing_novels)
+    - status=created       → only created_novels
+    - status=playing       → only playing_novels
+    - status=planned       → only planned_novels
+    - status=completed     → only completed_novels
+    - status=favorite      → only favorite_novels
+    - status=abandoned     → only abandoned_novels
+    """
+    uid = me.user_id
+
+    # вынимаем из пользователя нужный список ID
+    user_doc = db.collection("users").document(uid).get()
+    if not user_doc.exists:
+        raise HTTPException(404, "User not found")
+    u = user_doc.to_dict()
+
+    # map status → поле в документе User
+    field_map = {
+        "created":   "created_novels",
+        "playing":   "playing_novels",
+        "planned":   "planned_novels",
+        "completed": "completed_novels",
+        "favorite":  "favorite_novels",
+        "abandoned": "abandoned_novels",
+    }
+
+    # собираем set из нужных списков
+    ids = set()
+    if user_status == "all":
+        ids |= set(u.get("created_novels", []))
+        ids |= set(u.get("playing_novels", []))
+    else:
+        ids |= set(u.get(field_map[user_status], []))
+
+    # если после этого пусто — вернём пустой список
+    if not ids:
+        return []
+
+    # делаем пакетный get по всем этим novel_id
+    novels = []
+    for nid in ids:
+        snap = db.collection("novels").document(nid).get()
+        if not snap.exists:
+            continue
+        nov = Novel.model_validate(snap.to_dict())
+        # 3) опционально фильтруем по жанру
+        if genre is None or genre in nov.genres:
+            novels.append(nov)
+
+    return novels

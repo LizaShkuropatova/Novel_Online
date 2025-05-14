@@ -55,7 +55,7 @@ class Novel(BaseModel):
     cover_image_url: Optional[str] = None #ссылка на изображение новеллы
 
     # ——— Поля «статуса» в рамках этой копии новеллы ———
-    state:            Literal["planned", "in_progress", "abandoned", "completed"] = "planned"
+    state:            Literal["in_progress", "planned", "completed", "abandoned"] = "planned"
     current_position: Optional[str]   = None  # checkpoint-id или офсет
     ended_at:         Optional[datetime] = None  # когда state=="completed"
 
@@ -69,7 +69,7 @@ class Character(BaseModel):
     backstory:    str                                    # пред-история
     traits:       str                                    # Дополнительные черты, привычки или предпочтения персонажа в виде одной строки
 
-Status = Literal["playing", "planned", "completed", "favorite", "abandoned"]
+Status = Literal["in_progress", "planned", "completed", "favorite", "abandoned"]
 
 class User(BaseModel):
     user_id:          str = Field(default_factory=gen_uuid)
@@ -84,9 +84,11 @@ class User(BaseModel):
     created_novels:   List[str]          = Field(default_factory=list)  # Созданные пользователем новеллы
     playing_novels: List[str] = Field(default_factory=list) # Играю
     planned_novels:     List[str]          = Field(default_factory=list)  # В планах
-    completed_novels: List[str]          = Field(default_factory=list)  # Пройдено
+    completed_novels: List[str]          = Field(default_factory=list)  # Закончено/Пройдено
     favorite_novels: List[str] = Field(default_factory=list) # Любимые
     abandoned_novels: List[str] = Field(default_factory=list) # Брошено
+
+StatusFilter = Literal["all", "created", "playing", "planned", "completed", "favorite", "abandoned"]
 
 class Multiplayer(BaseModel):
     session_id:    str                 = Field(default_factory=gen_uuid)
