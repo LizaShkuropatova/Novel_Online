@@ -59,6 +59,13 @@ class Novel(BaseModel):
     current_position: Optional[str]   = None  # checkpoint-id или офсет
     ended_at:         Optional[datetime] = None  # когда state=="completed"
 
+class CharacterCreate(BaseModel):
+    role:         Literal["player", "npc"]
+    name:         Optional[str] = None
+    appearance:   Optional[str] = None
+    backstory:    Optional[str] = None
+    traits:       Optional[str] = None
+
 class Character(BaseModel):
     character_id: str = Field(default_factory=gen_uuid)
     novel_id:     str
