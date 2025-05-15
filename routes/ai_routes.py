@@ -40,6 +40,13 @@ async def ai_health():
 class MetadataFieldsRequest(BaseModel):
     fields: List[Literal["title", "description", "setting"]]
 
+class CharacterGenRequest(BaseModel):
+    role:       Literal["player", "npc"]
+    fields:     List[Literal["name", "appearance", "backstory", "traits"]]
+    name:       Optional[str] = None
+    appearance: Optional[str] = None
+    backstory:  Optional[str] = None
+    traits:     Optional[str] = None
 
 @router.post(
     "/novels/{novel_id}/metadata",
@@ -96,57 +103,49 @@ async def suggest_metadata(
     return results
 # Для сохранения изменений вызов: PUT /novels/{novel_id} из routes/novel_routes
 
-
-class CharacterRequest(BaseModel):
-    role: Literal["player", "npc"]
-    name: Optional[str] = None
-    appearance: Optional[str] = None
-    backstory: Optional[str] = None
-    traits: Optional[str] = None
-
-
 @router.post(
-    "/novels/{novel_id}/character",
-    summary="Generate complete character without saving",
+    "/novels/{novel_id}/character/generate",
     response_model=Character,
     status_code=status.HTTP_201_CREATED,
+    summary="AI: сгенерировать указанные поля персонажа",
 )
-async def suggest_character(
+async def generate_character_fields(
     novel_id: str,
-    req: CharacterRequest,
-    db: FirestoreClient = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    req: CharacterGenRequest,
+    db: FirestoreClient     = Depends(get_db),
+    current_user: User      = Depends(get_current_user),
 ):
-    # Проверяем, что новелла существует
+    # проверяем, что новелла есть
     snap = db.collection("novels").document(novel_id).get()
     if not snap.exists:
         raise HTTPException(404, "Novel not found")
-    stored = Novel.model_validate(snap.to_dict())
+    novel = Novel.model_validate(snap.to_dict())
 
-    # Собираем существующие поля
+    # существующие значения (заменим None → "")
     existing = {
         "name":       req.name or "",
         "appearance": req.appearance or "",
         "backstory":  req.backstory or "",
         "traits":     req.traits or "",
     }
-    to_generate = [k for k, v in existing.items() if not v]
 
-    # Генерируем недостающие
-    gen = generate_character(
-        title=stored.title,
-        genres=stored.genres,
-        setting=stored.setting,
-        fields=to_generate,
-        existing=existing,
+    # вызываем утилиту, она вернёт только те ключи, что в req.fields
+    generated = generate_character(
+        title    = novel.title,
+        genres   = novel.genres,
+        setting  = novel.setting,
+        fields   = req.fields,
+        existing = existing,
     )
-    combined = {**existing, **gen}
 
-    # Возвращаем модель (ещё не сохранённую)
+    # объединяем
+    combined = {**existing, **generated}
+
+    # возвращаем Character (пока ещё не сохраняя)
     return Character(
-        character_id = "",  # пустой, будет присвоен при сохранении
+        character_id = "",  # присвоится только при фактическом сохранении
         novel_id     = novel_id,
-        user_id      = None if req.role == "npc" else current_user.user_id,
+        user_id      = None if req.role=="npc" else current_user.user_id,
         role         = req.role,
         name         = combined["name"],
         appearance   = combined["appearance"],

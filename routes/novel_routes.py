@@ -4,21 +4,13 @@ from pydantic import BaseModel
 from datetime import datetime, timezone
 import uuid
 
-from models import NovelCreate, Novel, Character, User, TextSegment,TextEdit, Genre, Status, StatusFilter
+from models import NovelCreate, Novel, Character, User, TextSegment,TextEdit, Genre, Status, StatusFilter, CharacterCreate
 from utils.firebase import get_db, get_storage_bucket
 from google.cloud.firestore import Client as FirestoreClient
 from routes.auth_routes import get_current_user
 from firebase_admin import firestore  # firestore.ArrayUnion, ArrayRemove
 
 router = APIRouter()
-
-# ——— Схема для создания/обновления персонажа ———
-class CharacterPayload(BaseModel):
-    role:       Literal["player", "npc"]
-    name:       str
-    appearance: str
-    backstory:  str
-    traits:     str
 
 # маленькая Pydantic-схема для отдачи только ID
 class CharacterIdResponse(BaseModel):
@@ -285,40 +277,46 @@ async def get_original(
 )
 async def create_character(
     novel_id:     str,
-    payload:      CharacterPayload,
+    payload:      CharacterCreate,            # <-- новая модель
     current_user: User            = Depends(get_current_user),
     db:           FirestoreClient = Depends(get_db),
 ):
     """
-    Создаёт игрового персонажа для текущего пользователя и
-    пушит его user_id в массив user_players главной новеллы.
+    Создаёт персонажа с обязательным полем `role`.
     """
     novel_ref = db.collection("novels").document(novel_id)
     if not novel_ref.get().exists:
-        raise HTTPException(status_code=404, detail="Novella not found")
+        raise HTTPException(404, "Novel not found")
 
+    # Если payload.name == None, заменяем на пустую строку
+    name       = payload.name or ""
+    appearance = payload.appearance or ""
+    backstory  = payload.backstory or ""
+    traits     = payload.traits or ""
+
+    # Создаём Pydantic-модель
     char = Character(
         character_id = str(uuid.uuid4()),
         novel_id     = novel_id,
         user_id      = current_user.user_id,
         role         = payload.role,
-        name         = payload.name,
-        appearance   = payload.appearance,
-        backstory    = payload.backstory,
-        traits       = payload.traits,
+        name         = name,
+        appearance   = appearance,
+        backstory    = backstory,
+        traits       = traits,
     )
 
+    # сохраняем в Firestore
     novel_ref.collection("characters") \
              .document(char.character_id) \
              .set(char.model_dump())
 
-    # Добавляем пользователя в список игроков новеллы
+    # добавляем юзера в список игроков новеллы
     novel_ref.update({
         "user_players": firestore.ArrayUnion([current_user.user_id])
     })
 
     return char
-
 # Список персонажей конкретной новеллы
 @router.get("/{novel_id}/characters",response_model=List[Character])
 async def list_characters(
@@ -339,7 +337,7 @@ async def list_characters(
 async def update_character(
     novel_id:     str,
     character_id: str,
-    payload:      CharacterPayload,
+    payload:      CharacterCreate,
     db:           FirestoreClient = Depends(get_db),
 ):
     """
@@ -677,7 +675,7 @@ async def list_my_novels(
     if not ids:
         return []
 
-    # делаем пакетный get по всем этим novel_id
+    # делаем get по всем этим novel_id
     novels = []
     for nid in ids:
         snap = db.collection("novels").document(nid).get()
