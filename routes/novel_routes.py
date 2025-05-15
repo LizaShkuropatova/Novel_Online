@@ -92,7 +92,7 @@ async def get_novel(
 ):
     doc = db.collection("novels").document(novel_id).get()
     if not doc.exists:
-        raise HTTPException(status_code=404, detail="Новелла не найдена")
+        raise HTTPException(status_code=404, detail="Novel not found")
     return Novel.model_validate(doc.to_dict())
 
 
@@ -106,14 +106,14 @@ async def update_novel(
     ref = db.collection("novels").document(novel_id)
     snap = ref.get()
     if not snap.exists:
-        raise HTTPException(status_code=404, detail="Новелла не найдена")
+        raise HTTPException(status_code=404, detail="Novel not found")
 
     # проверяем, что текущий юзер — один из авторов
     novel = Novel.model_validate(snap.to_dict())
     if current_user.user_id not in novel.users_author:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Обновлять может только автор новеллы"
+            detail="Only the Author of the novella can update it"
         )
 
     payload.updated_at = datetime.now(timezone.utc)
@@ -142,16 +142,16 @@ async def patch_novel(
     ref = db.collection("novels").document(novel_id)
     snap = ref.get()
     if not snap.exists:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Новелла не найдена")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Novel not found")
 
     stored = Novel.model_validate(snap.to_dict())
     if current_user.user_id not in stored.users_author:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Обновлять может только автор")
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Only the Author can update")
 
     # Собираем только те поля, которые пришли
     update_data = payload.model_dump(exclude_unset=True)
     if not update_data:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Нет полей для обновления")
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="No fields to update")
 
     # Добавляем метку времени
     update_data["updated_at"] = datetime.now(timezone.utc)
@@ -163,7 +163,7 @@ async def patch_novel(
     new_snap = ref.get()
     return Novel.model_validate(new_snap.to_dict())
 
-
+# Удаляет новелу, очищает все его упоминания в профилях пользователей и удаляет связанные с ним сеансы.
 @router.delete("/{novel_id}")
 async def delete_novel(
     novel_id: str,
@@ -171,21 +171,21 @@ async def delete_novel(
     current_user: User          = Depends(get_current_user),
 ):
     """
-    Удаляет новеллу, очищает все её вхождения в профилях пользователей
-    и удаляет связанные сессии.
+    Deletes the novel, clears all its occurrences in user profiles
+    and deletes related sessions.
     """
     # Проверяем, что новелла есть
     ref = db.collection("novels").document(novel_id)
     snap = ref.get()
     if not ref.get().exists:
-        raise HTTPException(status_code=404, detail="Новелла не найдена")
+        raise HTTPException(status_code=404, detail="Novel not found")
 
     # проверяем, что текущий юзер — один из авторов
     novel = Novel.model_validate(snap.to_dict())
     if current_user.user_id not in novel.users_author:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Удалить может только автор новеллы"
+            detail="Only the Author of the short story can delete"
         )
 
     # Удаляем сам документ новеллы
@@ -196,8 +196,7 @@ async def delete_novel(
     for sess_doc in sessions:
         sess_doc.reference.delete()
 
-    # Удаляем novel_id из массивов у всех пользователей
-    #    (created_novels, saved_novels, completed_novels)
+    # Удаляем novel_id из массивов у всех пользователей (created_novels, saved_novels, completed_novels)
     users = db.collection("users").where("created_novels", "array_contains", novel_id).stream()
     for u in users:
         u.reference.update({
@@ -213,7 +212,7 @@ async def delete_novel(
         u.reference.update({
             "completed_novels": firestore.ArrayRemove([novel_id])
         })
-    return {"detail": "Новелла и все её упоминания удалены"}
+    return {"detail": "Novel and all references to it have been removed"}
 
 # Создание копии новелы, с новым автором, игроком и тд.
 @router.post("/{novel_id}/fork", response_model=Novel)
@@ -223,12 +222,12 @@ async def fork_novel(
     db:           FirestoreClient = Depends(get_db),
 ):
     """
-    Форкаем новеллу: клонируем, меняем ID, ставим current_user автором и игроком.
+    Fork the Novel: clone it, change the ID, put current_user as author and player.
     """
     orig_ref = db.collection("novels").document(novel_id)
     orig_snap = orig_ref.get()
     if not orig_snap.exists:
-        raise HTTPException(status_code=404, detail="Оригинальная новелла не найдена")
+        raise HTTPException(status_code=404, detail="The original Novel was not found")
 
     original = Novel.model_validate(orig_snap.to_dict())
     new = original.model_copy(deep=True)
@@ -253,11 +252,11 @@ async def get_original(
     db:        FirestoreClient = Depends(get_db),
 ):
     """
-    Возвращает оригинал форкнутой новеллы.
+    Returns the original of the Forked Novel.
     """
     fork_snap = db.collection("novels").document(novel_id).get()
     if not fork_snap.exists:
-        raise HTTPException(status_code=404, detail="Novella not found")
+        raise HTTPException(status_code=404, detail="Novel not found")
 
     fork = Novel.model_validate(fork_snap.to_dict())
     if not fork.novel_original_id:
@@ -282,7 +281,7 @@ async def create_character(
     db:           FirestoreClient = Depends(get_db),
 ):
     """
-    Создаёт персонажа с обязательным полем `role`.
+    Creates a character with a mandatory `role` field.
     """
     novel_ref = db.collection("novels").document(novel_id)
     if not novel_ref.get().exists:
@@ -317,6 +316,7 @@ async def create_character(
     })
 
     return char
+
 # Список персонажей конкретной новеллы
 @router.get("/{novel_id}/characters",response_model=List[Character])
 async def list_characters(
@@ -324,7 +324,7 @@ async def list_characters(
     db:        FirestoreClient = Depends(get_db),
 ):
     """
-    Возвращает всех персонажей конкретной новеллы.
+    Returns all characters in a particular Novel.
     """
     char_snaps = (db.collection("novels")
                     .document(novel_id)
@@ -341,7 +341,7 @@ async def update_character(
     db:           FirestoreClient = Depends(get_db),
 ):
     """
-    Обновляет поля персонажа.
+    Updates the Character's fields.
     """
     char_ref = (db.collection("novels")
                   .document(novel_id)
@@ -480,7 +480,7 @@ async def list_text_segments(
 
 
 # Список новелл, созданных пользователем (не учитывает те где участвывает)
-@router.get("/user/{user_id}",response_model=List[Novel],summary="Список новелл, созданных пользователем")
+@router.get("/user/{user_id}",response_model=List[Novel],summary="List of Novels created by the user")
 async def list_user_novels(
     user_id: str,
     db: FirestoreClient = Depends(get_db),
@@ -493,7 +493,7 @@ async def list_user_novels(
     return [ Novel.model_validate(doc.to_dict()) for doc in snaps ]
 
 # Список новелл по жанру
-@router.get("/genre/{genre}",response_model=List[Novel],summary="Список новелл по жанру")
+@router.get("/genre/{genre}",response_model=List[Novel],summary="List of Novel by genre")
 async def list_genre_novels(
     genre: Genre,
     db: FirestoreClient = Depends(get_db),
@@ -506,7 +506,7 @@ async def list_genre_novels(
     return [ Novel.model_validate(doc.to_dict()) for doc in snaps ]
 
 
-@router.get("/user/{user_id}/both",response_model=List[Novel],summary="Новеллы, где пользователь и автор, и игрок")
+@router.get("/user/{user_id}/both",response_model=List[Novel],summary="Novels where the user is both Author and Player")
 async def list_author_and_player_novels(
     user_id: str,
     db: FirestoreClient = Depends(get_db),
@@ -570,11 +570,11 @@ async def upload_novel_image(
 @router.put(
     "/me/novels/{novel_id}/status",
     status_code=status.HTTP_204_NO_CONTENT,
-    summary="Установить статус новеллы для текущего пользователя"
+    summary="Set the Novel Status for the current user"
 )
 async def set_novel_status(
     novel_id: str,
-    new_status: Status = Query(..., description="Выберите статус"),
+    new_status: Status = Query(..., description="Select a Status"),
     db: FirestoreClient = Depends(get_db),
     current: User       = Depends(get_current_user),
 ):
@@ -598,7 +598,7 @@ async def set_novel_status(
 
 @router.get(
     "/me/novels/{novel_id}/status",
-    summary="Узнать, в каком списке находится новелла у текущего пользователя",
+    summary="Find out which list the current user has the Novel in",
     response_model=Literal["playing", "planned", "completed", "favorite", "abandoned", None]
 )
 async def get_novel_status(
@@ -608,7 +608,7 @@ async def get_novel_status(
 ):
     user_doc = db.collection("users").document(current.user_id).get()
     if not user_doc.exists:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Пользователь не найден")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
     data = user_doc.to_dict()
 
     # проверяем каждый список по порядку

@@ -17,10 +17,9 @@ load_dotenv()
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    # это выполняется *один раз* перед первым запросом
+    # это выполняется один раз перед первым запросом
     init_firebase()
     yield
-    # здесь можно произвести очистку системы отключения
 
 app = FastAPI(
   title="Interactive Novel API",

@@ -25,7 +25,7 @@ router  = APIRouter()
 bearer_scheme = HTTPBearer()
 
 
-# ─── Pydantic schemas ────────────────────────────────────────────────────────────
+# ─── Pydantic schemas ───
 class UserCreate(BaseModel):
     email:    EmailStr
     username: str
@@ -56,7 +56,7 @@ class UserPatch(BaseModel):
     birthday: Optional[datetime]          = None
 
 
-# ─── Utility functions ─────────────────────────────────────────────────────────
+# ─── Utility functions ──
 def hash_password(pw: str) -> str:
     return pwd_ctx.hash(pw)
 
@@ -103,7 +103,7 @@ def get_user_by_username(
         return doc.id, data
     return None, None
 
-# ─── POST /auth/register ───────────────────────────────────────────────────────
+# ─── POST /auth/register ──
 @router.post("/register", response_model=Me, status_code=status.HTTP_201_CREATED)
 async def register(
     payload: UserCreate,
@@ -140,7 +140,7 @@ async def register(
     return Me(**user.model_dump())
 
 
-# ─── POST /auth/login ──────────────────────────────────────────────────────────
+# ─── POST /auth/login ───
 @router.post("/login", response_model=Token)
 async def login(
     payload: LoginRequest,
@@ -154,7 +154,7 @@ async def login(
     return Token(access_token=create_jwt(user_id))
 
 
-# ─── Dependency: get_current_user ───────────────────────────────────────────────
+# ─── Dependency: get_current_user ──
 async def get_current_user(
     creds: HTTPAuthorizationCredentials = Depends(bearer_scheme),
     db:    FirestoreClient             = Depends(get_db),
@@ -196,7 +196,7 @@ async def upload_user_avatar(
     # если был старый аватар — удаляем его
     if old_avatar_url:
         # URL имеет вид https://storage.googleapis.com/<bucket-name>/users/{user_id}/{filename}
-        # берем путь "users/{user_id}/{filename}"
+        # берем путь users/{user_id}/{filename}
         parsed = urlparse(old_avatar_url)
         # parsed.path = "/<bucket-name>/users/{user_id}/{filename}"
         # убираем первый сегмент "/<bucket-name>/"
