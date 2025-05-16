@@ -119,6 +119,7 @@ def generate_novel_setting(
 # Генерация персонажа: дополняем отсутствующие поля
 def generate_character(
     title: str,
+    description: str,
     genres: List[str],
     setting: Optional[str] = "",
     fields: Optional[List[str]] = None,
@@ -129,15 +130,18 @@ def generate_character(
     existing = existing or {}
 
     system_msg = (
-        "You are a character design assistant."
-        "Fill in only the missing or requested character fields based on the provided context."
-        "Respond using labels 'Name:', 'Appearance:', 'Backstory:', 'Traits:'."
+        "You are a character design assistant of novel.\n"
+        "Fill in *only* the requested character fields, and nothing else.\n"
+        f"Requested fields: {', '.join(fields)}.\n"
+        "You **must** output each field on its own line in the exact format:\n"
+        "FieldName: value\n"
+        "Do not add any extra text or punctuation."
     )
 
-    # Правильная сборка списка строк
     genre_str = ", ".join(genres)
     parts: List[str] = [
         f"Title: {title}",
+        f"Description: {description}",
         f"Genres: {genre_str}",
     ]
     if setting:
@@ -148,16 +152,14 @@ def generate_character(
         if val:
             parts.append(f"{field.capitalize()}: {val}")
 
-    # Если нужны генерации дополнительных полей
     if fields:
-        parts.append("")  # пустая строка, чтобы отделить
-        parts.append("Generate:")
+        parts.append("")
+        parts.append("Generate only these fields:")
         for f in fields:
             parts.append(f"- {f.capitalize()}")
 
     user_msg = "\n".join(parts)
 
-    # Запрос в модель
     raw = chat_with_model(
         [
             {"role": "system", "content": system_msg},
@@ -166,8 +168,7 @@ def generate_character(
         max_tokens=max_tokens,
         temperature=temperature,
     )
-
-    # Парсим ответ
+    # Парсер забирает только лейблы с двоеточием
     result: Dict[str, str] = {}
     for line in raw.splitlines():
         if ':' in line:

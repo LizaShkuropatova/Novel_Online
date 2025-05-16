@@ -107,7 +107,7 @@ async def suggest_metadata(
     "/novels/{novel_id}/character/generate",
     response_model=Character,
     status_code=status.HTTP_201_CREATED,
-    summary="AI: сгенерировать указанные поля персонажа",
+    summary="AI: generate the specified character fields",
 )
 async def generate_character_fields(
     novel_id: str,
@@ -133,6 +133,7 @@ async def generate_character_fields(
     generated = generate_character(
         title    = novel.title,
         genres   = novel.genres,
+        description = novel.description,
         setting  = novel.setting,
         fields   = req.fields,
         existing = existing,
