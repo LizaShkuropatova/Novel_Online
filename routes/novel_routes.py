@@ -277,7 +277,7 @@ async def get_original(
 )
 async def create_character(
     novel_id:     str,
-    payload:      CharacterCreate,            # <-- новая модель
+    payload:      CharacterCreate,
     current_user: User            = Depends(get_current_user),
     db:           FirestoreClient = Depends(get_db),
 ):
@@ -287,6 +287,22 @@ async def create_character(
     novel_ref = db.collection("novels").document(novel_id)
     if not novel_ref.get().exists:
         raise HTTPException(404, "Novel not found")
+
+    # Если создаётся именно роль "player" — проверяем, не создавал ли уже игрок персонажа
+    if payload.role == "player":
+        existing_player = (
+            novel_ref
+            .collection("characters")
+            .where("user_id", "==", current_user.user_id)
+            .where("role",    "==", "player")
+            .limit(1)
+            .stream()
+        )
+        if any(True for _ in existing_player):
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "You already have a player character in this novel"
+            )
 
     # Если payload.name == None, заменяем на пустую строку
     name       = payload.name or ""
@@ -354,7 +370,7 @@ async def update_character(
     char_ref.set(payload.model_dump(), merge=True)
     return Character.model_validate(char_ref.get().to_dict())
 
-# Получить ID персонажа текущего пользователя в этой новеллы
+# Отримати ID персонажа поточного користувача в цій новелі
 @router.get("/{novel_id}/characters/me", response_model=CharacterIdResponse,
     summary="Get the character ID of the current user's character in this novel")
 async def get_my_character(
@@ -383,7 +399,7 @@ async def get_my_character(
         detail="The current user doesn't have a character in this novel yet"
     )
 
-# Сохраняем текст в сегмент (в ручную написанный) и даже если это как пролог (1-й)
+# Зберігаємо текст у сегмент (вручну написаний) і навіть якщо це як пролог (1-й)
 @router.post("/{novel_id}/text/segments",
     response_model=TextSegment,
     status_code=status.HTTP_201_CREATED,
@@ -395,12 +411,12 @@ async def add_text_segment(
     db: FirestoreClient = Depends(get_db),
     current_user: User  = Depends(get_current_user),
 ):
-    # Проверяем, что новелла существует
+    # Перевіряємо, що новела існує
     novel_ref = db.collection("novels").document(novel_id)
     if not novel_ref.get().exists:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Novel not found")
 
-    # Сохраняем новый сегмент
+    # Зберігаємо новий сегмент
     segment_id = str(uuid.uuid4())
     seg = TextSegment(
         segment_id=segment_id,
