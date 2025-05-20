@@ -1,10 +1,11 @@
-from fastapi import APIRouter, HTTPException, Depends, status, Query, File, UploadFile
+from fastapi import APIRouter, HTTPException, Depends, status, Query, File, UploadFile, Response
 from typing import List, Literal, Optional
 from pydantic import BaseModel
 from datetime import datetime, timezone
 import uuid
+from itertools import islice
 
-from models import NovelCreate, Novel, Character, User, TextSegment,TextEdit, Genre, Status, StatusFilter, CharacterCreate
+from models import NovelCreate, Novel, Character, User, TextSegment,TextEdit, Genre, Status, StatusFilter, CharacterCreate, MultiplayerSession
 from utils.firebase import get_db, get_storage_bucket
 from google.cloud.firestore import Client as FirestoreClient
 from routes.auth_routes import get_current_user
@@ -52,24 +53,24 @@ async def create_novel(
     })
     return novel
 
-# Список всех новел в БД
+# Список усіх новел в БД
 @router.get("/", response_model=List[Novel])
 async def list_novels(db: FirestoreClient = Depends(get_db)):
     snaps = db.collection("novels").stream()
     return [Novel.model_validate(doc.to_dict()) for doc in snaps]
 
-# Список Публичных новел
-@router.get("/public", response_model=List[Novel], summary="Список публичных новелл (is_public=True)")
+# Список Публічних новел
+@router.get("/public", response_model=List[Novel], summary="List of Public Novels (is_public=True)")
 async def list_public_novels(
     db: FirestoreClient = Depends(get_db),
 ):
     snaps = db.collection("novels").where("is_public", "==", True).stream()
     return [ Novel.model_validate(doc.to_dict()) for doc in snaps ]
 
-# Поиск новел по названию/части
-@router.get("/search",response_model=List[Novel], summary="Поиск новеллы по части названия")
+# Пошук новели за назвою/частиною
+@router.get("/search",response_model=List[Novel], summary="Пошук новелли по частині назви")
 async def search_novels(
-    q: str = Query(..., min_length=1, description="Фрагмент названия для поиска"),
+    q: str = Query(..., min_length=1, description="Фрагмент назви для пошуку"),
     db: FirestoreClient = Depends(get_db),
 ):
     # Firestore не поддерживает полноценный «contains» на строках, по этому простая фильтрация на клиенте
@@ -478,6 +479,64 @@ async def list_text_segments(
     )
     return [TextSegment.model_validate(doc.to_dict()) for doc in snaps]
 
+@router.delete(
+    "/novels/{novel_id}/text/segments/{segment_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete a text segment (author or session participant only)"
+)
+async def delete_text_segment(
+    novel_id: str,
+    segment_id: str,
+    db: FirestoreClient = Depends(get_db),
+    current_user: User  = Depends(get_current_user),
+):
+    # 1) ensure novel exists
+    novel_ref = db.collection("novels").document(novel_id)
+    if not novel_ref.get().exists:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Novel not found")
+
+    # 2) load the segment
+    seg_ref = novel_ref.collection("text_segments").document(segment_id)
+    seg_snap = seg_ref.get()
+    if not seg_snap.exists:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Segment not found")
+
+    seg_data = seg_snap.to_dict()
+
+    # 3) check permission: either the original author…
+    if seg_data.get("author_id") == current_user.user_id:
+        allowed = True
+    else:
+        # …or a participant (including host) in any multiplayer session for this novel
+        allowed = False
+        sessions = db.collection("sessions")\
+                     .where("novel_id", "==", novel_id)\
+                     .stream()
+        for s in sessions:
+            sess = MultiplayerSession.model_validate(s.to_dict())
+            if current_user.user_id == sess.host_id \
+               or current_user.user_id in sess.players:
+                allowed = True
+                break
+
+    if not allowed:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Not permitted to delete this segment")
+
+    # 4) delete the segment
+    seg_ref.delete()
+
+    # 5) if this was the novel’s current_position, clear it
+    novel = novel_ref.get().to_dict()
+    if novel.get("current_position") == segment_id:
+        novel_ref.update({
+            "current_position": None,
+            "updated_at": datetime.now(timezone.utc)
+        })
+    else:
+        # just bump updated_at
+        novel_ref.update({"updated_at": datetime.now(timezone.utc)})
+
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 # Список новелл, созданных пользователем (не учитывает те где участвывает)
 @router.get("/user/{user_id}",response_model=List[Novel],summary="List of Novels created by the user")
@@ -492,7 +551,7 @@ async def list_user_novels(
     )
     return [ Novel.model_validate(doc.to_dict()) for doc in snaps ]
 
-# Список новелл по жанру
+# Список новелл по 1 жанру
 @router.get("/genre/{genre}",response_model=List[Novel],summary="List of Novel by genre")
 async def list_genre_novels(
     genre: Genre,
@@ -505,6 +564,76 @@ async def list_genre_novels(
     )
     return [ Novel.model_validate(doc.to_dict()) for doc in snaps ]
 
+def chunked(iterable, size=10):
+    it = iter(iterable)
+    while True:
+        chunk = list(islice(it, size))
+        if not chunk:
+            break
+        yield chunk
+
+
+@router.get(
+    "/novels/by-any-genres",
+    response_model=List[Novel],
+    summary="List novels matching ANY of the given genres"
+)
+async def list_novels_by_genres(
+    genres: List[Genre] = Query(..., description="?genres=horror&genres=drama&…"),
+    db: FirestoreClient = Depends(get_db),
+):
+    genre_values = [g.value for g in genres]
+    seen_ids = set()
+    result = []
+
+    for chunk in chunked(genre_values, 10):
+        snaps = db.collection("novels") \
+                  .where("genres", "array_contains_any", chunk) \
+                  .stream()
+        for doc in snaps:
+            if doc.id not in seen_ids:
+                seen_ids.add(doc.id)
+                result.append(Novel.model_validate(doc.to_dict()))
+
+    return result
+
+@router.get(
+    "/novels/by-all-genres",
+    response_model=List[Novel],
+    summary="List all novels matching ALL of the given genres",
+)
+async def list_novels_by_all_genres(
+    genres: List[Genre] = Query(
+        ...,
+        description="One or more genres to filter by (e.g. ?genres=horror&genres=drama)"
+    ),
+    db: FirestoreClient = Depends(get_db),
+):
+    """
+    Вернет только те новеллы, массив genres которых содержит **все**
+    переданные в запросе значения.
+    """
+    # Приводим Enum -> строки
+    genre_values = [g.value for g in genres]
+    if not genre_values:
+        return []
+
+    # Сначала фильтрация по первому жанру
+    first = genre_values[0]
+    snaps = db.collection("novels") \
+              .where("genres", "array_contains", first) \
+              .stream()
+
+    result: List[Novel] = []
+    for doc in snaps:
+        data = doc.to_dict()
+        # убеждаемся, что все жанры есть в массиве
+        if all(g in data.get("genres", []) for g in genre_values):
+            # валидирует через Pydantic
+            result.append(Novel.model_validate(data))
+
+    return result
+
 
 @router.get("/user/{user_id}/both",response_model=List[Novel],summary="Novels where the user is both Author and Player")
 async def list_author_and_player_novels(
@@ -512,8 +641,8 @@ async def list_author_and_player_novels(
     db: FirestoreClient = Depends(get_db),
 ):
     """
-    Возвращает все новеллы, в которых user_id одновременно
-    присутствует и в users_author, и в user_players.
+    Повертає всі новели, в яких user_id одночасно
+    присутній і в users_author, і в user_players.
     """
     # сначала запрашиваем все новеллы, где user_id в users_author
     snaps = (
@@ -525,7 +654,7 @@ async def list_author_and_player_novels(
     result: List[Novel] = []
     for doc in snaps:
         data = doc.to_dict()
-        # 2) фильтруем по наличию в user_players
+        # фильтруем по наличию в user_players
         if user_id in data.get("user_players", []):
             result.append(Novel.model_validate(data))
 
