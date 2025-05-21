@@ -435,7 +435,7 @@ async def add_text_segment(
     return seg
 
 # Редактировать сегмент Новеллы
-@router.put( "/novels/{novel_id}/text/segments/{segment_id}",
+@router.put( "/{novel_id}/text/segments/{segment_id}",
     response_model=TextSegment,summary="Edit a specific text segment")
 async def edit_segment(
     novel_id:     str,
@@ -496,7 +496,7 @@ async def list_text_segments(
     return [TextSegment.model_validate(doc.to_dict()) for doc in snaps]
 
 @router.delete(
-    "/novels/{novel_id}/text/segments/{segment_id}",
+    "/{novel_id}/text/segments/{segment_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete a text segment (author or session participant only)"
 )
@@ -649,6 +649,37 @@ async def list_novels_by_all_genres(
             result.append(Novel.model_validate(data))
 
     return result
+
+@router.get(
+    "/public/by-all-genres",
+    response_model=List[Novel],
+    summary="List public novels matching ALL of the given genres",
+)
+async def list_public_novels_by_all_genres(
+    genres: List[Genre] = Query(...),
+    db: FirestoreClient = Depends(get_db),
+):
+    genre_values = [g.value for g in genres]
+    if not genre_values:
+        return []
+
+    # сначала фильтрация по первому жанру + публичность
+    first = genre_values[0]
+    snaps = (
+        db.collection("novels")
+          .where("is_public", "==", True)              # ← только публичные
+          .where("genres", "array_contains", first)
+          .stream()
+    )
+
+    result: List[Novel] = []
+    for doc in snaps:
+        data = doc.to_dict()
+        # проверяем, что все жанры есть
+        if all(g in data.get("genres", []) for g in genre_values):
+            result.append(Novel.model_validate(data))
+    return result
+
 
 
 @router.get("/user/{user_id}/both",response_model=List[Novel],summary="Novels where the user is both Author and Player")
