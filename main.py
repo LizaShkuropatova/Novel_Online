@@ -11,13 +11,13 @@ from routes.auth_routes import router as auth_router
 from routes.novel_routes import router as novel_router
 from routes.ai_routes import router as ai_router
 from routes.multiplayer_routes  import router as multiplayer_router
+from routes.friend_routes import router as friends_router
 
-# Загружаем переменные окружения
+# Завантажуємо змінні оточення
 load_dotenv()
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    # это выполняется один раз перед первым запросом
     init_firebase()
     yield
 
@@ -35,11 +35,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Регистрация роутеров
+# Реєстрація роутерів
 app.include_router(auth_router, prefix="/auth", tags=["auth"])
 app.include_router(novel_router, prefix="/novels", tags=["novels"])
 app.include_router(ai_router, prefix="/ai", tags=["ai"])
 app.include_router(multiplayer_router,  prefix="/sessions",  tags=["multiplayer"])
+app.include_router(friends_router)
 
 if __name__ == "__main__":
     import uvicorn

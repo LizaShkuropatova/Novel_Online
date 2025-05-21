@@ -129,6 +129,8 @@ async def register(
         created_at        = now,
         last_login        = now,
         friends           = [],
+        friend_requests_sent = [],
+        friend_requests_received = [],
         created_novels    = [],
         playing_novels    = [],
         planned_novels    = [],
@@ -193,24 +195,24 @@ async def upload_user_avatar(
 
     bucket = get_storage_bucket()
 
-    # если был старый аватар — удаляем его
+    # якщо був старий аватар - видаляємо його
     if old_avatar_url:
-        # URL имеет вид https://storage.googleapis.com/<bucket-name>/users/{user_id}/{filename}
-        # берем путь users/{user_id}/{filename}
+        # URL має вигляд https://storage.googleapis.com/<bucket-name>/users/{user_id}/{filename}
+        # беремо шлях users/{user_id}/{filename}
         parsed = urlparse(old_avatar_url)
         # parsed.path = "/<bucket-name>/users/{user_id}/{filename}"
-        # убираем первый сегмент "/<bucket-name>/"
+        # прибираємо перший сегмент "/<bucket-name>/"
         blob_path = parsed.path.lstrip("/").split("/", 1)[1]
         bucket.blob(blob_path).delete()
 
-    # загружаем новый файл
+    # завантажуємо новий файл
     blob = bucket.blob(f"users/{current_user.user_id}/{file.filename}")
     contents = await file.read()
     blob.upload_from_string(contents, content_type=file.content_type)
     blob.make_public()
     new_url = blob.public_url
 
-    # сохраняем новый URL в Firestore
+    # зберігаємо новий URL у Firestore
     user_ref.update({
         "avatar": new_url,
         "last_login": datetime.now(timezone.utc)
@@ -229,26 +231,25 @@ async def update_me(
     db:      FirestoreClient = Depends(get_db),
     current: User            = Depends(get_current_user),
 ):
-    # Собираем только те поля, что пришли
+    # Збираємо тільки ті поля, що прийшли
     update_data = payload.model_dump(exclude_unset=True)
     if not update_data:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Нет полей для обновления")
 
-    # Проверяем уникальность username
+    # Перевірка унікальності username
     if "username" in update_data and update_data["username"] != current.username:
         existing_id, _ = get_user_by_username(db, update_data["username"])
         if existing_id:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Username already taken")
 
-    # Хэшируем новый пароль
+    # Хешування нового паролю
     if "password" in update_data:
         update_data["password"] = hash_password(update_data["password"])
 
-    # Обновляем документ пользователя
+    # Оновлюємо документ користувача
     user_ref = db.collection("users").document(current.user_id)
     user_ref.update(update_data)
 
-    # Читаем обратно и возвращаем
     new_doc = user_ref.get().to_dict()
     new_doc["user_id"]   = current.user_id
     return Me(**new_doc)

@@ -13,14 +13,14 @@ from firebase_admin import firestore  # firestore.ArrayUnion, ArrayRemove
 
 router = APIRouter()
 
-# маленькая Pydantic-схема для отдачи только ID
+# маленька Pydantic-схема для віддачі тільки ID
 class CharacterIdResponse(BaseModel):
     character_id: str
 
 @router.get("/genres",response_model=List[Genre],summary="List all available genres")
 async def list_genres():
     """
-    Returns a list of all genres supported by the application.
+    Повертає список усіх жанрів, що підтримуються додатком.
     """
     return list(Genre)
 
@@ -44,10 +44,10 @@ async def create_novel(
         is_public    = data.is_public,
     )
 
-    # сохраняем
+    # зберігаємо
     db.collection("novels").document(novel.novel_id).set(novel.model_dump())
 
-    # добавляем в created_novels автора
+    # додаємо в created_novels автора
     db.collection("users").document(current_user.user_id).update({
         "created_novels": firestore.ArrayUnion([novel.novel_id])
     })
@@ -73,7 +73,6 @@ async def search_novels(
     q: str = Query(..., min_length=1, description="Фрагмент назви для пошуку"),
     db: FirestoreClient = Depends(get_db),
 ):
-    # Firestore не поддерживает полноценный «contains» на строках, по этому простая фильтрация на клиенте
     low = q.lower()
     snaps = db.collection("novels").stream()
     result: List[Novel] = []
@@ -85,7 +84,7 @@ async def search_novels(
     return result
 
 
-# Найти новеллу по novel_id
+# Знайти новелу за novel_id
 @router.get("/{novel_id}", response_model=Novel)
 async def get_novel(
     novel_id: str,
@@ -131,7 +130,7 @@ class NovelPatch(BaseModel):
 @router.patch(
     "/{novel_id}",
     response_model=Novel,
-    summary="Partially update a novel (title, description, genres, setting, is_public",
+    summary="Partially update a novel (title, description, genres, setting, is_public)",
     status_code=status.HTTP_200_OK,
 )
 async def patch_novel(
@@ -149,22 +148,22 @@ async def patch_novel(
     if current_user.user_id not in stored.users_author:
         raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Only the Author can update")
 
-    # Собираем только те поля, которые пришли
+    # Збираємо тільки ті поля, які прийшли
     update_data = payload.model_dump(exclude_unset=True)
     if not update_data:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="No fields to update")
 
-    # Добавляем метку времени
+    # Додаємо мітку часу
     update_data["updated_at"] = datetime.now(timezone.utc)
 
     # Пушим в Firestore
     ref.update(update_data)
 
-    # Возвращаем свежие данные
+    # Повертаємо свіжі дані
     new_snap = ref.get()
     return Novel.model_validate(new_snap.to_dict())
 
-# Удаляет новелу, очищает все его упоминания в профилях пользователей и удаляет связанные с ним сеансы.
+# Видаляє новелу, очищає всі згадки в профілях користувачів і видаляє пов'язані з нею сеанси.
 @router.delete("/{novel_id}")
 async def delete_novel(
     novel_id: str,
@@ -172,16 +171,16 @@ async def delete_novel(
     current_user: User          = Depends(get_current_user),
 ):
     """
-    Deletes the novel, clears all its occurrences in user profiles
-    and deletes related sessions.
+    Видаляє новелу, очищає всі згадки в профілях користувачів
+    і видаляє пов'язані з нею сеанси.
     """
-    # Проверяем, что новелла есть
+    # Перевіряємо, що новела є
     ref = db.collection("novels").document(novel_id)
     snap = ref.get()
     if not ref.get().exists:
         raise HTTPException(status_code=404, detail="Novel not found")
 
-    # проверяем, что текущий юзер — один из авторов
+    # перевіряємо, що поточний юзер - один з авторів
     novel = Novel.model_validate(snap.to_dict())
     if current_user.user_id not in novel.users_author:
         raise HTTPException(
@@ -189,15 +188,15 @@ async def delete_novel(
             detail="Only the Author of the short story can delete"
         )
 
-    # Удаляем сам документ новеллы
+    # Видаляємо сам документ новели
     ref.delete()
 
-    # Удаляем все сессии, привязанные к этой новелле
+    # Видаляємо всі сесії, прив'язані до цієї новели
     sessions = db.collection("sessions").where("novel_id", "==", novel_id).stream()
     for sess_doc in sessions:
         sess_doc.reference.delete()
 
-    # Удаляем novel_id из массивов у всех пользователей (created_novels, saved_novels, completed_novels)
+    # Видаляємо novel_id з масивів у всіх користувачів (created_novels, saved_novels, completed_novels)
     users = db.collection("users").where("created_novels", "array_contains", novel_id).stream()
     for u in users:
         u.reference.update({
@@ -215,7 +214,7 @@ async def delete_novel(
         })
     return {"detail": "Novel and all references to it have been removed"}
 
-# Создание копии новелы, с новым автором, игроком и тд.
+# Створення копії новели, з новим автором, гравцем і тд.
 @router.post("/{novel_id}/fork", response_model=Novel)
 async def fork_novel(
     novel_id:     str,
@@ -282,7 +281,7 @@ async def create_character(
     db:           FirestoreClient = Depends(get_db),
 ):
     """
-    Creates a character with a mandatory `role` field.
+    Створення персонажу з обов'язковим полем `role`.
     """
     novel_ref = db.collection("novels").document(novel_id)
     if not novel_ref.get().exists:
@@ -304,13 +303,13 @@ async def create_character(
                 "You already have a player character in this novel"
             )
 
-    # Если payload.name == None, заменяем на пустую строку
+    # Якщо payload.name == None, замінюємо на порожній рядок
     name       = payload.name or ""
     appearance = payload.appearance or ""
     backstory  = payload.backstory or ""
     traits     = payload.traits or ""
 
-    # Создаём Pydantic-модель
+    # Створюємо Pydantic-модель
     char = Character(
         character_id = str(uuid.uuid4()),
         novel_id     = novel_id,
@@ -322,26 +321,26 @@ async def create_character(
         traits       = traits,
     )
 
-    # сохраняем в Firestore
+    # зберігаємо в Firestore
     novel_ref.collection("characters") \
              .document(char.character_id) \
              .set(char.model_dump())
 
-    # добавляем юзера в список игроков новеллы
+    # додаємо юзера до списку гравців новели
     novel_ref.update({
         "user_players": firestore.ArrayUnion([current_user.user_id])
     })
 
     return char
 
-# Список персонажей конкретной новеллы
+# Список персонажів конкретної новели
 @router.get("/{novel_id}/characters",response_model=List[Character])
 async def list_characters(
     novel_id: str,
     db:        FirestoreClient = Depends(get_db),
 ):
     """
-    Returns all characters in a particular Novel.
+    Повертає всіх персонажів певної новели.
     """
     char_snaps = (db.collection("novels")
                     .document(novel_id)
@@ -349,7 +348,7 @@ async def list_characters(
                     .stream())
     return [Character.model_validate(doc.to_dict()) for doc in char_snaps]
 
-# Обновить персонажа
+# Оновити персонажа
 @router.put("/{novel_id}/characters/{character_id}", response_model=Character)
 async def update_character(
     novel_id:     str,
@@ -379,21 +378,21 @@ async def get_my_character(
     db:           FirestoreClient = Depends(get_db),
 ):
     """
-    Ищет в подколлекции `characters` документа `novels/{novel_id}`
-    персонажа, у которого поле user_id совпадает с текущим.
-    Если найден — возвращает его character_id, иначе 404.
+    Шукає в підколекції `characters` документа `novels/{novel_id}`
+    персонажа, у якого поле user_id збігається з поточним.
+    Якщо знайдений - повертає його character_id, інакше 404.
     """
-    # ссылка на подколлекцию
+    # посилання на підколекцію
     chars_coll = db.collection("novels") \
                    .document(novel_id) \
                    .collection("characters")
 
-    # запрос по полю user_id
+    # запит за полем user_id
     snaps = chars_coll.where("user_id", "==", current_user.user_id).stream()
     for doc in snaps:
         return CharacterIdResponse(character_id=doc.id)
 
-    # если ни одного не нашли — 404
+    # якщо жодного не знайшли - 404
     raise HTTPException(
         status_code=status.HTTP_404_NOT_FOUND,
         detail="The current user doesn't have a character in this novel yet"
@@ -458,13 +457,13 @@ async def edit_segment(
     data = snap.to_dict()
     if data.get("author_id") != current_user.user_id:
         raise HTTPException(403, "Not allowed to edit this segment")
-    # сохраняем обновлённый контент, но сохраняем оригинальную дату создания
+    # зберігаємо оновлений контент, але зберігаємо оригінальну дату створення
     updated = {
         "content":    edit.content,
-        "created_at": data["created_at"],  # сохраняем оригинальную дату
+        "created_at": data["created_at"],  # зберігаємо оригінальну дату
     }
 
-    # обновляем у новеллы метку времени
+    # оновлюємо у новели мітку часу
     db.collection("novels").document(novel_id).update({
         "updated_at": datetime.now(timezone.utc)
     })
@@ -473,7 +472,7 @@ async def edit_segment(
     out = TextSegment(segment_id=segment_id, **updated)
     return out
 
-# Получить все сегменты новеллы по айди новеллы
+# Отримати всі сегменти новели за айді новели
 @router.get(
     "/{novel_id}/text/segments",
     response_model=List[TextSegment],
@@ -506,12 +505,11 @@ async def delete_text_segment(
     db: FirestoreClient = Depends(get_db),
     current_user: User  = Depends(get_current_user),
 ):
-    # 1) ensure novel exists
     novel_ref = db.collection("novels").document(novel_id)
     if not novel_ref.get().exists:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Novel not found")
 
-    # 2) load the segment
+    # load segment
     seg_ref = novel_ref.collection("text_segments").document(segment_id)
     seg_snap = seg_ref.get()
     if not seg_snap.exists:
@@ -519,11 +517,11 @@ async def delete_text_segment(
 
     seg_data = seg_snap.to_dict()
 
-    # 3) check permission: either the original author…
+    # check permission: either the original author…
     if seg_data.get("author_id") == current_user.user_id:
         allowed = True
     else:
-        # …or a participant (including host) in any multiplayer session for this novel
+        # …або учасник (в тому числі host) у будь-якій мультплеєрній сесії для цієї новели
         allowed = False
         sessions = db.collection("sessions")\
                      .where("novel_id", "==", novel_id)\
@@ -538,10 +536,10 @@ async def delete_text_segment(
     if not allowed:
         raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Not permitted to delete this segment")
 
-    # 4) delete the segment
+    # delete the segment
     seg_ref.delete()
 
-    # 5) if this was the novel’s current_position, clear it
+    # if this was the novel’s current_position, clear it
     novel = novel_ref.get().to_dict()
     if novel.get("current_position") == segment_id:
         novel_ref.update({
@@ -549,12 +547,11 @@ async def delete_text_segment(
             "updated_at": datetime.now(timezone.utc)
         })
     else:
-        # just bump updated_at
         novel_ref.update({"updated_at": datetime.now(timezone.utc)})
 
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
-# Список новелл, созданных пользователем (не учитывает те где участвывает)
+# Список новел, створених користувачем (не враховує ті де бере участь)
 @router.get("/user/{user_id}",response_model=List[Novel],summary="List of Novels created by the user")
 async def list_user_novels(
     user_id: str,
@@ -567,7 +564,7 @@ async def list_user_novels(
     )
     return [ Novel.model_validate(doc.to_dict()) for doc in snaps ]
 
-# Список новелл по 1 жанру
+# Список новел за 1 жанром
 @router.get("/genre/{genre}",response_model=List[Novel],summary="List of Novel by genre")
 async def list_genre_novels(
     genre: Genre,
@@ -626,8 +623,8 @@ async def list_novels_by_all_genres(
     db: FirestoreClient = Depends(get_db),
 ):
     """
-    Вернет только те новеллы, массив genres которых содержит **все**
-    переданные в запросе значения.
+    Поверне тільки ті новели, масив genres яких містить **все**
+    передані в запиті значення.
     """
     # Приводим Enum -> строки
     genre_values = [g.value for g in genres]
@@ -663,7 +660,7 @@ async def list_public_novels_by_all_genres(
     if not genre_values:
         return []
 
-    # сначала фильтрация по первому жанру + публичность
+    # спочатку фільтрація за першим жанром + публічність
     first = genre_values[0]
     snaps = (
         db.collection("novels")
@@ -688,8 +685,8 @@ async def list_author_and_player_novels(
     db: FirestoreClient = Depends(get_db),
 ):
     """
-    Повертає всі новели, в яких user_id одночасно
-    присутній і в users_author, і в user_players.
+    Returns all novels in which user_id is both
+    is present in both users_author and user_players.
     """
     # сначала запрашиваем все новеллы, где user_id в users_author
     snaps = (
@@ -707,7 +704,7 @@ async def list_author_and_player_novels(
 
     return result
 
-# Сохранение изображение новеллы в БД
+# Збереження зображення новели в БД
 @router.post(
     "/{novel_id}/images",
     status_code=status.HTTP_201_CREATED,
@@ -719,7 +716,7 @@ async def upload_novel_image(
     db=Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    # Проверяем, что новелла существует и текущий пользователь — её автор
+    # Перевіряємо, що новела існує і поточний користувач - її автор
     ref = db.collection("novels").document(novel_id)
     snap = ref.get()
     if not snap.exists:
@@ -728,16 +725,16 @@ async def upload_novel_image(
     if current_user.user_id not in novel.users_author:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Only an author can upload images")
 
-    # Заливаем файл в Cloud Storage
+    # Заливаємо файл у Cloud Storage
     bucket = get_storage_bucket()
     blob = bucket.blob(f"novels/{novel_id}/{file.filename}")
     contents = await file.read()
     blob.upload_from_string(contents, content_type=file.content_type)
     blob.make_public()
-    # Получаем публичный URL
+    # Отримуємо публічний URL
     url = blob.public_url
 
-    # Сохраняем строку URL в поле cover_image_url
+    # Зберігаємо рядок URL у полі cover_image_url
     ref.update({"cover_image_url": url})
 
     return {"cover_image_url": url}
@@ -755,16 +752,16 @@ async def set_novel_status(
     current: User       = Depends(get_current_user),
 ):
     """
-    Снимает эту новеллу из всех пяти списков и добавляет в тот, который указан в new_status.
+    Видаляє цю новелу з усіх п'яти списків і додає в той, що вказаний у new_status.
     """
     user_ref = db.collection("users").document(current.user_id)
 
-    # сначала удаляем из всех списков
+    # спочатку видаляємо з усіх списків
     updates = {}
     for field in ("playing_novels", "planned_novels", "completed_novels", "favorite_novels", "abandoned_novels"):
         updates[field] = firestore.ArrayRemove([novel_id])
 
-    # потом добавляем в нужный
+    # потім додаємо в потрібний
     field_to_add = f"{new_status}_novels"
     updates[field_to_add] = firestore.ArrayUnion([novel_id])
 
@@ -787,7 +784,7 @@ async def get_novel_status(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
     data = user_doc.to_dict()
 
-    # проверяем каждый список по порядку
+    # перевіряємо кожен список по порядку
     if novel_id in data.get("playing_novels", []):
         return "playing"
     if novel_id in data.get("planned_novels", []):
@@ -823,13 +820,13 @@ async def list_my_novels(
     """
     uid = me.user_id
 
-    # вынимаем из пользователя нужный список ID
+    # виймаємо з користувача потрібний список ID
     user_doc = db.collection("users").document(uid).get()
     if not user_doc.exists:
         raise HTTPException(404, "User not found")
     u = user_doc.to_dict()
 
-    # map status → поле в документе User
+    # map status → поле в документі User
     field_map = {
         "created":   "created_novels",
         "playing":   "playing_novels",
@@ -839,7 +836,7 @@ async def list_my_novels(
         "abandoned": "abandoned_novels",
     }
 
-    # собираем set из нужных списков
+    # збираємо set з потрібних списків
     ids = set()
     if user_status == "all":
         ids |= set(u.get("created_novels", []))
@@ -847,18 +844,17 @@ async def list_my_novels(
     else:
         ids |= set(u.get(field_map[user_status], []))
 
-    # если после этого пусто — вернём пустой список
+    # якщо після цього порожньо - повернемо порожній список
     if not ids:
         return []
 
-    # делаем get по всем этим novel_id
+    # робимо get за всіма цими novel_id
     novels = []
     for nid in ids:
         snap = db.collection("novels").document(nid).get()
         if not snap.exists:
             continue
         nov = Novel.model_validate(snap.to_dict())
-        # 3) опционально фильтруем по жанру
         if genre is None or genre in nov.genres:
             novels.append(nov)
 

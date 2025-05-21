@@ -101,7 +101,7 @@ async def suggest_metadata(
         )
 
     return results
-# Для сохранения изменений вызов: PUT /novels/{novel_id} из routes/novel_routes
+# Для збереження змін виклик виклик: PUT /novels/{novel_id} из routes/novel_routes
 
 @router.post(
     "/novels/{novel_id}/character/generate",
@@ -115,13 +115,13 @@ async def generate_character_fields(
     db: FirestoreClient     = Depends(get_db),
     current_user: User      = Depends(get_current_user),
 ):
-    # проверяем, что новелла есть
+    # перевіряємо, що новела є
     snap = db.collection("novels").document(novel_id).get()
     if not snap.exists:
         raise HTTPException(404, "Novel not found")
     novel = Novel.model_validate(snap.to_dict())
 
-    # существующие значения (заменим None → "")
+    # существующие значення (замінимо None → "")
     existing = {
         "name":       req.name or "",
         "appearance": req.appearance or "",
@@ -129,7 +129,7 @@ async def generate_character_fields(
         "traits":     req.traits or "",
     }
 
-    # вызываем утилиту, она вернёт только те ключи, что в req.fields
+    # викликаємо утиліту, вона поверне тільки ті ключі, що в req.fields
     generated = generate_character(
         title    = novel.title,
         genres   = novel.genres,
@@ -139,12 +139,12 @@ async def generate_character_fields(
         existing = existing,
     )
 
-    # объединяем
+    # об'єднуємо
     combined = {**existing, **generated}
 
-    # возвращаем Character (пока ещё не сохраняя)
+    # повертаємо Character (поки ще не зберігаючи)
     return Character(
-        character_id = "",  # присвоится только при фактическом сохранении
+        character_id = "",  # присвоїться тільки при фактичному збереженні
         novel_id     = novel_id,
         user_id      = None if req.role=="npc" else current_user.user_id,
         role         = req.role,
@@ -153,7 +153,7 @@ async def generate_character_fields(
         backstory    = combined["backstory"],
         traits       = combined["traits"],
     )
-# Для сохранения вызов: POST /novels/{novel_id}/characters из routes/novel_routes
+# Для збереження виклик: POST /novels/{novel_id}/characters из routes/novel_routes
 
 
 @router.post(
@@ -167,7 +167,7 @@ async def create_prologue(
     db: FirestoreClient = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    # Загружаем весь контекст
+    # Завантажуємо весь контекст
     try:
         ctx = load_novel_context(novel_id, db)
     except ValueError:
@@ -191,7 +191,7 @@ async def create_prologue(
         content=content,
         created_at=datetime.now(timezone.utc),
     )
-# Для сохранения вызов: POST /novels/{novel_id}/text/segments из routes/novel_routes
+# Для збереження виклику: POST /novels/{novel_id}/text/segments из routes/novel_routes
 
 
 @router.post(
@@ -215,7 +215,7 @@ async def continue_text(
     chars    = ctx["characters"]
     orig_ctx = ctx["original_context"]
 
-    # Генерируем продолжение
+    # Генеруємо продовження
     content = generate_continuation(
         full_text=own_text,
         title=novel.title,
@@ -232,7 +232,7 @@ async def continue_text(
         content=content,
         created_at=datetime.now(timezone.utc),
     )
-# Для сохранения вызов: POST /novels/{novel_id}/text/segments из routes/novel_routes
+# Для збереження виклик: POST /novels/{novel_id}/text/segments из routes/novel_routes
 
 
 # AI-generated choices
@@ -247,7 +247,7 @@ async def generate_choices_ai(
     db: FirestoreClient = Depends(get_db),
     current: User = Depends(get_current_user),
 ):
-    # Проверка сессии и доступа
+    # Перевірка сесії та доступу
     sess_ref = db.collection("sessions").document(sid)
     snap = sess_ref.get()
     if not snap.exists:
@@ -256,7 +256,7 @@ async def generate_choices_ai(
     if current.user_id not in (*sess.players, sess.host_id):
         raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Access denied")
 
-    # Загружаем весь контекст по новелле
+    # Завантажуємо весь контекст новели
     ctx = load_novel_context(sess.novel_id, db)
     novel      = ctx["novel"]
     opts = generate_three_plot_options(

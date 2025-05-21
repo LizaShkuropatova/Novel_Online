@@ -9,7 +9,7 @@ from models import Novel, TextSegment, Character
 load_dotenv()
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-# Общая обёртка под любой чат-запрос
+# Загальна обгортка під будь-який чат-запит
 def chat_with_model(
     messages: List[dict],
     model: str = os.getenv("AI_MODEL", "gpt-3.5-turbo"),
@@ -24,7 +24,7 @@ def chat_with_model(
     )
     return resp.choices[0].message.content.strip()
 
-# Генерация названия новеллы
+# Генерація назви новели
 def generate_title(
     genres: List[str],
     description: str = "",
@@ -32,8 +32,8 @@ def generate_title(
     max_tokens: int = 20,
 ) -> str:
     """
-    Генерирует лаконичное название для новеллы на основе жанра
-    (и при наличии — описания и сеттинга).
+    Генерує лаконічну назву для новели на основі жанру
+    (і за наявності - опису та сеттингу).
     """
     system_msg = (
         "You are a creative assistant specialized in generating evocative novel titles. "
@@ -58,7 +58,7 @@ def generate_title(
     )
 
 
-# Генерация описания новеллы
+# Генерація опису новели
 def generate_novel_description(
     title: str,
     genres: List[str],
@@ -88,7 +88,7 @@ def generate_novel_description(
     )
 
 
-# Генерация сеттинга новеллы
+# Генерація сеттингу новели
 def generate_novel_setting(
     title: str,
     genres: List[str],
@@ -116,7 +116,7 @@ def generate_novel_setting(
         temperature=0.7,
     )
 
-# Генерация персонажа: дополняем отсутствующие поля
+# Генерація персонажа: доповнюємо відсутні поля
 def generate_character(
     title: str,
     description: str,
@@ -181,11 +181,11 @@ def load_novel_context(
     db: FirestoreClient
 ) -> dict:
     """
-    Загружает:
-        основной документ Novel,
-        все текстовые сегменты (в порядке created_at),
-        все персонажи,
-        при наличии .novel_original_id — текст оригинала.
+    Завантажує:
+        основний документ Novel,
+        усі текстові сегменти (у порядку created_at),
+        усі персонажі,
+        за наявності .novel_original_id - текст оригіналу.
     """
     #Новелла
     doc = db.collection("novels").document(novel_id).get()
@@ -245,7 +245,7 @@ def generate_prologue(
         "Write in the second or third person 1–2 paragraph prologue that introduces the world, main conflict and these characters,"
         "building on the existing story foundation but avoiding direct continuation of old characters."
     )
-    # если есть фон оригинала, вставляем его
+    # якщо є фон оригіналу, вставляємо його
     user_parts = []
     if initial_context:
         user_parts.append("Background context (do not continue specific original characters):")
@@ -300,7 +300,7 @@ def generate_continuation(
         "",
         "Characters in this copy:",
     ])
-    # список персонажей
+    # список персонажів
     for char in characters:
         user_parts.append(f"- {char['name']}: {char.get('backstory','')}")
 

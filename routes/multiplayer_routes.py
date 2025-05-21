@@ -22,7 +22,7 @@ class FriendInfo(BaseModel):
     username: str
     avatar: Optional[str] = None
 
-# Create a new session (на вход айди новеллы)
+# Create a new session
 @router.post("/", response_model=MultiplayerSession, status_code=status.HTTP_201_CREATED)
 async def create_session(
     payload: Dict[str, str],  # {"novel_id": ...}
@@ -33,7 +33,7 @@ async def create_session(
     if not novel_id or not db.collection("novels").document(novel_id).get().exists:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Novel not found")
 
-    # создаём объект сессии
+    # створення об'єкту сесії
     session = MultiplayerSession(
         host_id=current.user_id,
         novel_id=novel_id,
@@ -53,23 +53,23 @@ async def list_available_friends(
     current_user: User = Depends(get_current_user),
     db: FirestoreClient = Depends(get_db),
 ):
-    # Загружаем сессию
+    # Завантажуємо сесію
     snap = db.collection("sessions").document(sid).get()
     if not snap.exists:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Session not found")
     sess = MultiplayerSession.model_validate(snap.to_dict())
 
-    # Составляем множество всех user_id в сессии и уже приглашённых
+    # Складаємо множину всіх user_id у сесії та вже запрошених
     in_session = set(sess.players.keys())
     in_session.update(sess.invited)
 
-    # Отфильтровываем друзей
+    # Відфільтровуємо друзів
     available_ids = [
         fid for fid in current_user.friends
         if fid not in in_session
     ]
 
-    # Загружаем документы друзей из Firestore
+    # Завантажуємо документи друзів із Firestore
     available: List[User] = []
     for fid in available_ids:
         user_snap = db.collection("users").document(fid).get()
@@ -93,33 +93,33 @@ async def invite_player(
     if not user_to_invite:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Missing user_id")
 
-    # Проверяем сессию
+    # Перевіряємо сесію
     ref = db.collection("sessions").document(sid)
     snap = ref.get()
     if not snap.exists:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Session not found")
     sess = MultiplayerSession.model_validate(snap.to_dict())
 
-    # Только хост может приглашать
+    # Тільки хост може запрошувати
     if sess.host_id != current.user_id:
         raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Only host can invite")
 
-    # Нельзя пригласить себя
+    # Не можна запросити себе
     if user_to_invite == current.user_id:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Cannot invite yourself")
 
-    # Нельзя приглашать повторно или если уже в списке players
+    # Не можна запрошувати повторно або якщо вже у списку players
     if user_to_invite in sess.invited:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="User already invited")
     if user_to_invite in sess.players:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="User already joined")
 
-    # Вместимость: учитываем и уже присоединившихся, и ещё предстоит приглашение
+    # Місткість: враховуємо і тих, хто вже приєднався, і тих, хто ще має бути запрошений
     total_after = len(sess.players) + len(sess.invited) + 1  # +1 для нового приглашения
     if total_after > MAX_PLAYERS:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Max players exceeded")
 
-    # Собственно приглашаем
+    # запрошуємо
     ref.update({
         "invited": firestore.ArrayUnion([user_to_invite])
     })
@@ -201,11 +201,11 @@ async def vote(
     if current.user_id not in sess.players:
         raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Not in session")
 
-    # Сохраняем голос
+    # Зберігаємо голос
     sess.votes[current.user_id] = payload["choice_id"]
     ref.update({"votes": sess.votes})
 
-    # если все проголосовали — планируем finalize_choice
+    # якщо всі проголосували - плануємо finalize_choice
     if len(sess.votes) == len(sess.players):
         background_tasks.add_task(finalize_choice, sid, current, db)
 
@@ -227,7 +227,7 @@ async def propose_choices(
     current: User = Depends(get_current_user),
     db: FirestoreClient = Depends(get_db),
 ):
-    # Проверяем, что сессия есть
+    # Перевіряємо, що сесія є
     sess_ref = db.collection("sessions").document(sid)
     if not sess_ref.get().exists:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -239,9 +239,9 @@ async def propose_choices(
             content=text,
             created_at=now_utc()
         )
-        # сохраняем в Firestore
+        # зберігаємо в Firestore
         sess_ref.collection("choices").document(choice.choice_id).set(choice.model_dump())
-        # и сразу сериализуем в dict
+        # і відразу в dict
         out.append(choice.model_dump())
 
     return out
@@ -256,8 +256,8 @@ async def list_choices(
     return [Choice.model_validate(d.to_dict()) for d in snaps]
 
 
-# Подведение итогов голосования: выбор победителя (популярное + случайный победитель если ничья)
-# автоматически сохранить победивший текст в коллекцию text_segments основной новеллы.
+# Створення підсумків голосування: вибір переможця (популярне + випадковий переможець якщо нічия)
+# збереження переможного тексту в колекцію text_segments основної новели.
 @router.post(
     "/{sid}/choices/finalize",
     response_model=Choice,
@@ -288,7 +288,7 @@ async def finalize_choice(
     top = [ch for ch, cnt in tally.items() if cnt == max_votes]
     winner_id = random.choice(top)
 
-    # Загружаем победивший Choice
+    # Завантажуємо переможний Choice
     choice_snap = sess_ref.collection("choices").document(winner_id).get()
     if not choice_snap.exists:
         raise HTTPException(
@@ -297,7 +297,7 @@ async def finalize_choice(
         )
     win_choice = Choice.model_validate(choice_snap.to_dict())
 
-    # Отправляем объявление в чат
+    # Надсилаємо оголошення в чат
     announcement = {
         "user_id": None,
         "msg":     f"Choice «{win_choice.content}» selected ({max_votes} votes).",
@@ -305,7 +305,7 @@ async def finalize_choice(
     }
     sess_ref.update({"chat": firestore.ArrayUnion([announcement])})
 
-    # Добавляем текст в основную новеллу
+    # Додаємо текст в основну новелу
     await add_text_segment(
         novel_id=sess.novel_id,
         edit=NovelTextEdit(content=win_choice.content),
@@ -313,14 +313,14 @@ async def finalize_choice(
         current_user=current
     )
 
-    # Удаляем все варианты в subcollection "choices" и используем batch для эффективности
+    # Видаляємо всі варіанти в subcollection "choices" і використовуємо batch для ефективності
     batch = db.batch()
     choices_coll = sess_ref.collection("choices")
     for doc in choices_coll.stream():
         batch.delete(doc.reference)
     batch.commit()
 
-    # Сбрасываем голоса в документе сессии
+    # Скидаємо голоси в документі сесії
     sess_ref.update({"votes": {}})
 
     return win_choice

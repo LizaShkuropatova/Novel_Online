@@ -39,8 +39,8 @@ class NovelCreate(BaseModel):
     setting:     Optional[str] = None
     is_public:   Optional[bool]  = False
 
+#  Метадані Новели
 class Novel(BaseModel):
-    # ——— Метаданные Новеллы ———
     novel_id:          str = Field(default_factory=gen_uuid)
     novel_original_id: Optional[str] = None
     users_author:      List[str] = Field(default_factory=list)
@@ -52,12 +52,12 @@ class Novel(BaseModel):
     created_at:        datetime          = Field(default_factory=now_utc)
     updated_at:        datetime          = Field(default_factory=now_utc)
     is_public:         bool = False
-    cover_image_url: Optional[str] = None #ссылка на изображение новеллы
+    cover_image_url: Optional[str] = None # посилання на зображення новели
 
-    # ——— Поля «статуса» в рамках этой копии новеллы ———
+    # ——— Поля "статусу" в рамках цієї новели ———
     state:            Literal["in_progress", "planned", "completed", "abandoned"] = "planned"
-    current_position: Optional[str]   = None  # checkpoint-id или офсет
-    ended_at:         Optional[datetime] = None  # когда state=="completed"
+    current_position: Optional[str]   = None  # checkpoint-id або офсет
+    ended_at:         Optional[datetime] = None  # коли state=="completed"
 
 class CharacterCreate(BaseModel):
     role:         Literal["player", "npc"]
@@ -69,12 +69,12 @@ class CharacterCreate(BaseModel):
 class Character(BaseModel):
     character_id: str = Field(default_factory=gen_uuid)
     novel_id:     str
-    user_id:      Optional[str] = None                   # заполнено только у игровых персонажей
+    user_id:      Optional[str] = None                   # заповнено тільки в ігрових персонажів
     role:         Literal["player", "npc"]
     name:         str
-    appearance:   str                                    # внешний вид
-    backstory:    str                                    # пред-история
-    traits:       str                                    # Дополнительные черты, привычки или предпочтения
+    appearance:   str                                    # зовнішній вигляд
+    backstory:    str                                    # перед-історія
+    traits:       str                                    # Додаткові риси, звички або вподобання
 
 Status = Literal["in_progress", "planned", "completed", "favorite", "abandoned"]
 
@@ -87,11 +87,13 @@ class User(BaseModel):
     avatar:           Optional[str]      = None
     created_at:     datetime           = Field(default_factory=now_utc)
     last_login:     datetime           = Field(default_factory=now_utc)
-    friends:          List[str]          = Field(default_factory=list)  # Список друзей
-    created_novels:   List[str]          = Field(default_factory=list)  # Созданные пользователем новеллы
+    friends:          List[str]          = Field(default_factory=list)  # Список друзів
+    friend_requests_sent:     List[str] = Field(default_factory=list)
+    friend_requests_received: List[str] = Field(default_factory=list)
+    created_novels:   List[str]          = Field(default_factory=list)  # Створені користувачем новели
     playing_novels: List[str] = Field(default_factory=list) # Играю
-    planned_novels:     List[str]          = Field(default_factory=list)  # В планах
-    completed_novels: List[str]          = Field(default_factory=list)  # Закончено/Пройдено
+    planned_novels:     List[str]          = Field(default_factory=list)  # У планах
+    completed_novels: List[str]          = Field(default_factory=list)  # Закінчено/Пройдено
     favorite_novels: List[str] = Field(default_factory=list) # Любимые
     abandoned_novels: List[str] = Field(default_factory=list) # Брошено
 
@@ -99,23 +101,23 @@ StatusFilter = Literal["all", "created", "playing", "planned", "completed", "fav
 
 class Multiplayer(BaseModel):
     session_id:    str                 = Field(default_factory=gen_uuid)
-    host_id:       str                 # user_id хозяина сессии
-    novel_id:      str                 # к какой новелле привязана сессия
+    host_id:       str                 # user_id хост сесії
+    novel_id:      str                 # до якої новели прив'язана сесія
     players: Dict[str, str] = Field(default_factory=dict)
     chat_messages: List[Dict[str, str]] = Field(default_factory=list) # [{"user_id":..., "msg":..., "time":...}, …]
     started_at:    datetime                = Field(default_factory=now_utc)
     ended_at:      Optional[datetime]  = None
 
-# Модель “Choice” и в БД храним поддокумент choices/{choice_id}
+# Модель "Choice" і в БД зберігаємо піддокумент choices/{choice_id}
 class Choice(BaseModel):
     choice_id:   str = Field(default_factory=lambda: str(uuid.uuid4()))
-    proposer_id: Optional[str]  # user_id игрока или None для ИИ
+    proposer_id: Optional[str]  # user_id гравця або None для ШІ
     content:     str
     created_at:  datetime = Field(default_factory=now_utc)
 
 class MultiplayerSession(BaseModel):
     session_id:  str                 = Field(default_factory=gen_uuid)
-    host_id:     str                 # user_id хозяина сессии
+    host_id:     str                 # user_id хоста сесії
     novel_id:    str
 
     invited:     List[str]           = Field(default_factory=list)
