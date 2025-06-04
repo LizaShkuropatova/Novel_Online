@@ -1,1 +1,20 @@
-
+[
+    {
+        "name": "Online Novels",
+        "icon": "bi:book-half",
+        "color": "indigo",
+        "children": [
+            {
+                "name": "Главная",
+                "path": "/"
+            }
+        ]
+    },
+    {
+        "name": "About Nuxt3",
+        "icon": "simple-icons:nuxtdotjs",
+        "color": "indigo",
+        "children": [
+        ]
+    }
+]
