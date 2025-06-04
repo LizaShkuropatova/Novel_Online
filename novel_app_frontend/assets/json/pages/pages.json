@@ -1,1 +1,27 @@
-
+{
+ "/": {
+  "title": "Home page",
+  "description": ""
+ },
+ "/sign-in": {
+  "title": "Sign in",
+  "description": ""
+ },
+ "/sign-up": {
+  "title": "Sign Up",
+  "description": ""
+ },
+ "/logout": {
+  "title": "Logout",
+  "description": ""
+ },
+ "/novels/create": {
+  "title": "Create novel",
+  "description": ""
+ },
+ "/novels/:novel_id/edit": {
+  "title": "Edit novel",
+  "description": "",
+  "layout": "landing"
+ }
+}
