@@ -2,7 +2,7 @@
 fastapi==0.115.12
 
 # Uvicorn – ASGI-сервер для запуску FastAPI
-uvicorn[standard]==0.34.1
+uvicorn==0.34.2
 
 # OpenAI – бібліотека для роботи з OpenAI API (наприклад, для генерації тексту)
 openai==1.77.0

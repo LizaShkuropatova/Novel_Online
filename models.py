@@ -52,11 +52,9 @@ class Novel(BaseModel):
     created_at:        datetime          = Field(default_factory=now_utc)
     updated_at:        datetime          = Field(default_factory=now_utc)
     is_public:         bool = False
-    cover_image_url: Optional[str] = None # посилання на зображення новели
-
-    # ——— Поля "статусу" в рамках цієї новели ———
+    cover_image_url: Optional[str] = None # посилання на зображення
     state:            Literal["in_progress", "planned", "completed", "abandoned"] = "planned"
-    current_position: Optional[str]   = None  # checkpoint-id або офсет
+    current_position: Optional[str]   = None
     ended_at:         Optional[datetime] = None  # коли state=="completed"
 
 class CharacterCreate(BaseModel):
@@ -79,23 +77,23 @@ class Character(BaseModel):
 Status = Literal["in_progress", "planned", "completed", "favorite", "abandoned"]
 
 class User(BaseModel):
-    user_id:          str = Field(default_factory=gen_uuid)
-    email:            EmailStr
+    user_id:  str = Field(default_factory=gen_uuid)
+    email:    EmailStr
     password: str
-    username:         str
-    birthday:         Optional[datetime] = None
-    avatar:           Optional[str]      = None
+    username: str
+    birthday:       Optional[datetime] = None
+    avatar:         Optional[str]      = None
     created_at:     datetime           = Field(default_factory=now_utc)
     last_login:     datetime           = Field(default_factory=now_utc)
-    friends:          List[str]          = Field(default_factory=list)  # Список друзів
-    friend_requests_sent:     List[str] = Field(default_factory=list)
+    friends:        List[str]          = Field(default_factory=list)  # Список друзів
+    friend_requests_sent: List[str] = Field(default_factory=list)
     friend_requests_received: List[str] = Field(default_factory=list)
-    created_novels:   List[str]          = Field(default_factory=list)  # Створені користувачем новели
+    created_novels: List[str]          = Field(default_factory=list)  # Створені користувачем
     playing_novels: List[str] = Field(default_factory=list) # Играю
-    planned_novels:     List[str]          = Field(default_factory=list)  # У планах
-    completed_novels: List[str]          = Field(default_factory=list)  # Закінчено/Пройдено
-    favorite_novels: List[str] = Field(default_factory=list) # Любимые
-    abandoned_novels: List[str] = Field(default_factory=list) # Брошено
+    planned_novels: List[str]          = Field(default_factory=list)  # У планах
+    completed_novels: List[str]        = Field(default_factory=list)  # Закінчено/Пройдено
+    favorite_novels: List[str] = Field(default_factory=list) # Улюблені
+    abandoned_novels: List[str] = Field(default_factory=list) # Кинуто
 
 StatusFilter = Literal["all", "created", "playing", "planned", "completed", "favorite", "abandoned"]
 
@@ -122,7 +120,7 @@ class MultiplayerSession(BaseModel):
 
     invited:     List[str]           = Field(default_factory=list)
     players:     Dict[str, Optional[str]] = Field(default_factory=dict)
-    votes:       Dict[str, str]      = Field(default_factory=dict)
+    votes:       Dict[str, str]      = Field(default_factory=dict) #######
     chat:        List[Dict[str, str]]= Field(default_factory=list)
     choices:     Dict[str, Choice]   = Field(default_factory=dict)
 

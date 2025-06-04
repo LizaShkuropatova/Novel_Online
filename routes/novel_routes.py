@@ -415,7 +415,7 @@ async def add_text_segment(
     if not novel_ref.get().exists:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Novel not found")
 
-    # Зберігаємо новий сегмент
+    # Зберігається новий сегмент
     segment_id = str(uuid.uuid4())
     seg = TextSegment(
         segment_id=segment_id,
@@ -425,15 +425,14 @@ async def add_text_segment(
     )
     novel_ref.collection("text_segments").document(segment_id).set(seg.model_dump())
 
-    # Обновляем текущую позицию и время обновления самой новеллы
+    # Оновлюється поточна позиція і час оновлення самої новели
     novel_ref.update({
         "current_position": segment_id,
         "updated_at": datetime.now(timezone.utc)
     })
-
     return seg
 
-# Редактировать сегмент Новеллы
+# Редагувати сегмент Новели
 @router.put( "/{novel_id}/text/segments/{segment_id}",
     response_model=TextSegment,summary="Edit a specific text segment")
 async def edit_segment(
@@ -453,7 +452,7 @@ async def edit_segment(
     if not snap.exists:
         raise HTTPException(404, "Segment not found")
 
-    # проверяем права автора
+    # перевіряємо права автора
     data = snap.to_dict()
     if data.get("author_id") != current_user.user_id:
         raise HTTPException(403, "Not allowed to edit this segment")

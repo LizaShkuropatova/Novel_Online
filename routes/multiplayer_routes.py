@@ -32,12 +32,10 @@ async def create_session(
     novel_id = payload.get("novel_id")
     if not novel_id or not db.collection("novels").document(novel_id).get().exists:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Novel not found")
-
     # створення об'єкту сесії
     session = MultiplayerSession(
         host_id=current.user_id,
-        novel_id=novel_id,
-        # сразу добавляем хоста в players
+        novel_id=novel_id, # відразу хоста в players
         players={current.user_id: None}
     )
     db.collection("sessions").document(session.session_id).set(session.model_dump())
@@ -243,7 +241,6 @@ async def propose_choices(
         sess_ref.collection("choices").document(choice.choice_id).set(choice.model_dump())
         # і відразу в dict
         out.append(choice.model_dump())
-
     return out
 
 # List all choices
@@ -280,7 +277,7 @@ async def finalize_choice(
     if not sess.votes:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="No votes to finalize")
 
-    # Подсчитываем голоса
+    # підрахунок голосів
     tally: Dict[str, int] = {}
     for ch_id in sess.votes.values():
         tally[ch_id] = tally.get(ch_id, 0) + 1
@@ -288,7 +285,7 @@ async def finalize_choice(
     top = [ch for ch, cnt in tally.items() if cnt == max_votes]
     winner_id = random.choice(top)
 
-    # Завантажуємо переможний Choice
+    # Збереження переможного Choice
     choice_snap = sess_ref.collection("choices").document(winner_id).get()
     if not choice_snap.exists:
         raise HTTPException(
@@ -313,7 +310,7 @@ async def finalize_choice(
         current_user=current
     )
 
-    # Видаляємо всі варіанти в subcollection "choices" і використовуємо batch для ефективності
+    # Видалення всіх варіантів в підколекції "choices" і batch для ефективності
     batch = db.batch()
     choices_coll = sess_ref.collection("choices")
     for doc in choices_coll.stream():
